@@ -33,9 +33,40 @@ const MEDICINES_STATIC = [
 /* ── Firestore live collection hook ─────────────── */
 function useRows(collectionName: string): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
+  const snapshotWorking = useRef(false);
+
   useEffect(() => {
+    // 1. Try client-side onSnapshot first
     const q = query(collection(firestore, collectionName), orderBy("createdAt", "desc"));
-    return onSnapshot(q, snap => setRows(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setRows([]));
+    const unsub = onSnapshot(
+      q,
+      snap => {
+        snapshotWorking.current = true;
+        setRows(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      () => {
+        // onSnapshot failed (permissions or missing index) — fall back to polling
+        snapshotWorking.current = false;
+      }
+    );
+
+    // 2. Polling fallback via server API (bypasses Firestore rules)
+    let mounted = true;
+    const poll = async () => {
+      if (snapshotWorking.current) return; // onSnapshot is working, skip
+      try {
+        const res = await fetch(`/api/collection?name=${encodeURIComponent(collectionName)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && Array.isArray(data.items)) {
+          setRows(data.items);
+        }
+      } catch { /* ignore */ }
+    };
+    void poll();
+    const interval = setInterval(poll, 3000);
+
+    return () => { mounted = false; clearInterval(interval); unsub(); };
   }, [collectionName]);
   return rows;
 }
