@@ -144,26 +144,85 @@ export function WaitingRoomDisplay({
     return () => clearInterval(interval);
   }, []);
 
+  // Robust cross-browser fullscreen toggle
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    try {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+        msFullscreenElement?: Element;
+        exitFullscreen?: () => Promise<void>;
+        webkitExitFullscreen?: () => Promise<void>;
+        mozCancelFullScreen?: () => Promise<void>;
+        msExitFullscreen?: () => Promise<void>;
+      };
+      const docEl = document.documentElement as unknown as {
+        requestFullscreen?: () => Promise<void>;
+        webkitRequestFullscreen?: () => Promise<void>;
+        mozRequestFullScreen?: () => Promise<void>;
+        msRequestFullscreen?: () => Promise<void>;
+      };
+
+      const isFs = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+
+      if (!isFs) {
+        const req =
+          docEl.requestFullscreen ||
+          docEl.webkitRequestFullscreen ||
+          docEl.mozRequestFullScreen ||
+          docEl.msRequestFullscreen;
+        if (req) {
+          req.call(docEl)
+            ?.then(() => setIsFullscreen(true))
+            ?.catch((err: unknown) => console.warn("Fullscreen request error:", err));
+        }
+      } else {
+        const exit =
+          doc.exitFullscreen ||
+          doc.webkitExitFullscreen ||
+          doc.mozCancelFullScreen ||
+          doc.msExitFullscreen;
+        if (exit) {
+          exit.call(doc)
+            ?.then(() => setIsFullscreen(false))
+            ?.catch((err: unknown) => console.warn("Exit fullscreen error:", err));
+        }
+      }
+    } catch (err) {
+      console.warn("Fullscreen toggle error:", err);
     }
   };
 
-  // Auto-enter fullscreen on mount
+  // Synchronize fullscreen state from browser events
   useEffect(() => {
-    const enter = () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-      }
+    const handleFsChange = () => {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+        msFullscreenElement?: Element;
+      };
+      setIsFullscreen(
+        !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement)
+      );
     };
-    // Small delay so browser allows it after user interaction (page navigation counts)
-    const t = setTimeout(enter, 300);
-    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => { clearTimeout(t); document.removeEventListener("fullscreenchange", onFsChange); };
+
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    document.addEventListener("mozfullscreenchange", handleFsChange);
+    document.addEventListener("MSFullscreenChange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+      document.removeEventListener("mozfullscreenchange", handleFsChange);
+      document.removeEventListener("MSFullscreenChange", handleFsChange);
+    };
   }, []);
 
   // Map real doctors to clinics
@@ -222,6 +281,33 @@ export function WaitingRoomDisplay({
 
   const router = useRouter();
 
+  const handleBack = () => {
+    // If browser is currently in fullscreen, exit fullscreen first
+    const doc = document as unknown as {
+      fullscreenElement?: Element;
+      webkitFullscreenElement?: Element;
+      exitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => Promise<void>;
+    };
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+      if (exit) {
+        exit.call(doc)?.catch(() => {});
+      }
+    }
+
+    if (isModal && onClose) {
+      onClose();
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.history.length > 1 && document.referrer) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  };
+
   return (
     <div style={{
       width: "100%",
@@ -233,63 +319,82 @@ export function WaitingRoomDisplay({
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
       position: "relative",
     }}>
-      {/* ── Back Button ── */}
-      <button
-        onClick={() => router.back()}
-        style={{
-          position: "absolute",
-          top: 14,
-          left: 14,
-          zIndex: 100,
-          background: "#1565c0",
-          color: "#ffffff",
-          border: "none",
-          borderRadius: 10,
-          padding: "8px 16px",
-          fontSize: 14,
-          fontWeight: 700,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          boxShadow: "0 2px 12px rgba(21,101,192,0.35)",
-          letterSpacing: "0.02em",
-          opacity: 0.85,
-          transition: "opacity 0.2s",
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-        onMouseLeave={e => (e.currentTarget.style.opacity = "0.85")}
-      >
-        ← Back
-      </button>
-      {/* Fullscreen toggle */}
-      <button
-        onClick={toggleFullscreen}
-        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-        style={{
-          position: "absolute",
-          top: 14,
-          left: 100,
-          zIndex: 100,
-          background: "#1565c0",
-          color: "#ffffff",
-          border: "none",
-          borderRadius: 10,
-          padding: "8px 14px",
-          fontSize: 16,
-          fontWeight: 700,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          boxShadow: "0 2px 12px rgba(21,101,192,0.35)",
-          opacity: 0.85,
-          transition: "opacity 0.2s",
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-        onMouseLeave={e => (e.currentTarget.style.opacity = "0.85")}
-      >
-        {isFullscreen ? "⛶" : "⛶"}
-      </button>
+      {/* ── Top Left Action Bar: Back & Fullscreen ── */}
+      <div style={{
+        position: "absolute",
+        top: 14,
+        left: 14,
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}>
+        {/* Back Button */}
+        <button
+          onClick={handleBack}
+          style={{
+            background: "#1565c0",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 16px",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            boxShadow: "0 2px 10px rgba(21,101,192,0.35)",
+            letterSpacing: "0.02em",
+            opacity: 0.9,
+            transition: "all 0.2s ease",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.opacity = "1";
+            e.currentTarget.style.background = "#0d47a1";
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.opacity = "0.9";
+            e.currentTarget.style.background = "#1565c0";
+          }}
+        >
+          ← Back
+        </button>
+
+        {/* Fullscreen Button */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit Fullscreen (Esc)" : "Enter Fullscreen (F11)"}
+          style={{
+            background: "#1565c0",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 16px",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            boxShadow: "0 2px 10px rgba(21,101,192,0.35)",
+            letterSpacing: "0.02em",
+            opacity: 0.9,
+            transition: "all 0.2s ease",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.opacity = "1";
+            e.currentTarget.style.background = "#0d47a1";
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.opacity = "0.9";
+            e.currentTarget.style.background = "#1565c0";
+          }}
+        >
+          <span style={{ fontSize: 16 }}>{isFullscreen ? "🗗" : "⛶"}</span>
+          <span>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
+        </button>
+      </div>
       {/* ── MAIN TOKEN BOARD ── */}
       <div style={{
         flex: 1,
