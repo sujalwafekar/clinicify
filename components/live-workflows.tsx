@@ -360,6 +360,7 @@ const fmtTime = (ms: number | null | undefined) => {
 
 type RegForm = {
   name: string; age: string; mobile: string; email: string;
+  gender: string;
   complaint: string; complaintCategory: string; department: string; isPriority: boolean;
 };
 type FormErrors = Partial<Record<keyof RegForm, string>>;
@@ -388,7 +389,7 @@ const DEMO_PATIENT_RECORDS: PatientMatch[] = [
 export function ReceptionLive({ state, department: receptionDept, callApi, notify }: {
   state: QueueState; department?: string; callApi: Call; notify: NotifyFn;
 }) {
-  const EMPTY_FORM: RegForm = { name: "", age: "", mobile: "", email: "", complaint: "", complaintCategory: "general", department: receptionDept ?? "", isPriority: false };
+  const EMPTY_FORM: RegForm = { name: "", age: "", mobile: "", email: "", gender: "", complaint: "", complaintCategory: "general", department: receptionDept ?? "", isPriority: false };
   const [form, setForm] = useState<RegForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
@@ -517,7 +518,8 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
       mobile: patient.mobile,
       name: patient.name,
       age: patient.age ? String(patient.age) : f.age,
-      email: patient.email ?? f.email
+      email: patient.email ?? f.email,
+      gender: patient.gender ?? f.gender,
     }));
     setErrors(e => ({ ...e, mobile: undefined, name: undefined, age: undefined }));
     setShowPhoneDropdown(false);
@@ -556,7 +558,7 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
     if (!doctor) return;
     setChoosingBusy(doctorId); setSelectedDoctorId(doctorId);
     try {
-      const body = { patient: { name: form.name.trim(), age: Number(form.age), mobile: form.mobile.trim(), email: form.email.trim() || undefined }, doctorId, departmentId: doctor.departmentId ?? effectiveDept.toLowerCase().replaceAll(" ", "-"), complaint: form.complaint.trim(), complaintCategory: form.complaintCategory, isPriority: form.isPriority };
+      const body = { patient: { name: form.name.trim(), age: Number(form.age), mobile: form.mobile.trim(), email: form.email.trim() || undefined, gender: form.gender || undefined }, doctorId, departmentId: doctor.departmentId ?? effectiveDept.toLowerCase().replaceAll(" ", "-"), complaint: form.complaint.trim(), complaintCategory: form.complaintCategory, isPriority: form.isPriority };
       const res = await callApi("/api/visits", body) as { token: string; trackingUrl: string };
       const visit = state.visits.find(v => v.token === res.token);
       setResult({ token: res.token, trackingUrl: res.trackingUrl, etaLower: visit?.etaLower ?? null, etaUpper: visit?.etaUpper ?? null, recommendedArrival: visit?.recommendedArrival ?? null, doctorName: doctor.name, doctorRoom: doctor.room, emailSent: !!form.email.trim() });
@@ -838,15 +840,24 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
                 {errors.name && <div className="field-error">{errors.name}</div>}
               </div>
 
-              {/* Age + Email */}
-              <div className="form-row" style={{ marginBottom: 10 }}>
+              {/* Age + Gender + Email */}
+              <div className="form-row-3" style={{ marginBottom: 10 }}>
                 <div className="form-field">
                   <label className="form-label">Age *</label>
                   <input className={`form-input${errors.age ? " input-error" : ""}`} type="number" min="0" max="130" value={form.age} onChange={e => ch("age", e.target.value)} placeholder="Years" />
                   {errors.age && <div className="field-error">{errors.age}</div>}
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Email <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 11 }}>(optional — for notifications)</span></label>
+                  <label className="form-label">Gender</label>
+                  <select className="form-select" value={form.gender} onChange={e => ch("gender", e.target.value)}>
+                    <option value="">— Select —</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Email <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 11 }}>(optional)</span></label>
                   <input className={`form-input${errors.email ? " input-error" : ""}`} type="email" value={form.email} onChange={e => ch("email", e.target.value)} placeholder="patient@email.com" />
                   {errors.email && <div className="field-error">{errors.email}</div>}
                 </div>

@@ -1,7 +1,9 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import { getLocalDb } from "@/lib/server/local-db";
 import { requireRole } from "@/lib/server/authorization";
+import { invalidateRealtimeCache } from "@/lib/server/realtime-cache";
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
       department: cleanDept,
       departmentId: cleanDept.toLowerCase().replaceAll(" ", "-"),
       room: cleanRoom,
-      status: "available",
+      status: "available" as const,
       hospitalId: "H1",
       currentVisitId: null,
       averageDuration: avgDuration,
@@ -34,14 +36,37 @@ export async function POST(request: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // Store in doctors collection so subscribeClinicify updates in real time
-    await adminDb().collection("doctors").doc(cleanDoctorId).set(doctorRecord, { merge: true });
+    // 1. Always save to local DB so it never fails even on quota limits
+    try {
+      const localDb = getLocalDb();
+      await localDb.collection("doctors").doc(cleanDoctorId).set({
+        ...doctorRecord,
+        createdAt: { _type: "timestamp", ms: Date.now() },
+        updatedAt: { _type: "timestamp", ms: Date.now() }
+      }, { merge: true });
+      await localDb.collection("rooms").doc(cleanDoctorId).set({
+        ...doctorRecord,
+        roomId: cleanDoctorId,
+        createdAt: { _type: "timestamp", ms: Date.now() },
+        updatedAt: { _type: "timestamp", ms: Date.now() }
+      }, { merge: true });
+    } catch (e) {
+      console.warn("[CreateRoom] LocalDb save error:", e);
+    }
 
-    // Store in dedicated rooms collection
-    await adminDb().collection("rooms").doc(cleanDoctorId).set({
-      ...doctorRecord,
-      roomId: cleanDoctorId,
-    }, { merge: true });
+    // 2. Try Firestore adminDb
+    try {
+      await adminDb().collection("doctors").doc(cleanDoctorId).set(doctorRecord, { merge: true });
+      await adminDb().collection("rooms").doc(cleanDoctorId).set({
+        ...doctorRecord,
+        roomId: cleanDoctorId,
+      }, { merge: true });
+    } catch (err) {
+      console.warn("[CreateRoom] Firestore write warning (quota or network):", err instanceof Error ? err.message : err);
+    }
+
+    // Invalidate realtime cache so next poll instantly gets the new room
+    invalidateRealtimeCache();
 
     return NextResponse.json({ ok: true, doctor: doctorRecord });
   } catch (error) {

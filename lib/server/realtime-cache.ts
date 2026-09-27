@@ -16,6 +16,7 @@ export interface CachedState {
 }
 
 let cachedState: CachedState | null = null;
+let lastKnownState: CachedState | null = null;
 
 export function getCachedState(): CachedState | null {
   if (cachedState && cachedState.expiresAt > Date.now()) {
@@ -24,8 +25,13 @@ export function getCachedState(): CachedState | null {
   return null;
 }
 
+export function getLastKnownState(): CachedState | null {
+  return lastKnownState || cachedState;
+}
+
 export function setCachedState(state: CachedState): void {
   cachedState = state;
+  lastKnownState = state;
 }
 
 export function invalidateRealtimeCache(): void {

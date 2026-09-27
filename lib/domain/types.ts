@@ -9,6 +9,7 @@ export interface Doctor {
 }
 export interface Visit {
   id: string; patientId: string; patientName: string; age: number; token: string; doctorId: string;
+  gender?: string;
   mobile?: string;
   complaint: string; complaintCategory: ComplaintCategory; priorityLevel: PriorityLevel;
   priorityInsertedAt?: number; sequenceNumber: number; status: VisitStatus; predictedDuration: number;

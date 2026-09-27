@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import { getLocalDb } from "@/lib/server/local-db";
 import type { Doctor, Visit } from "@/lib/domain/types";
 
 const millis = (value: unknown): number | undefined => {
@@ -9,6 +10,60 @@ const millis = (value: unknown): number | undefined => {
   if (typeof value === "number") return value;
   return undefined;
 };
+
+async function getLocalWaitingRoomData() {
+  const db = getLocalDb();
+  const doctorsSnap = await db.collection("doctors").get();
+  const doctors: Doctor[] = doctorsSnap.docs.map(doc => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      name: d.name ?? "Doctor",
+      department: d.department ?? "General Medicine",
+      departmentId: d.departmentId,
+      room: d.room ?? "Room 1",
+      status: d.status ?? "available",
+      currentVisitId: d.currentVisitId ?? null,
+      averageDuration: Number(d.averageDuration) || 9,
+    };
+  });
+
+  const visitsSnap = await db.collection("visits")
+    .where("status", "in", ["waiting", "in_consultation"])
+    .get();
+    
+  const visits: Visit[] = visitsSnap.docs.map(doc => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      patientId: d.patientId ?? "",
+      patientName: d.patientName ?? "Patient",
+      age: Number(d.age) || 0,
+      mobile: d.mobile,
+      token: d.token ?? "",
+      doctorId: d.doctorId ?? "",
+      complaint: d.complaintText ?? d.complaint ?? "General consultation",
+      complaintCategory: d.complaintCategory ?? "general",
+      priorityLevel: d.priorityLevel ?? 0,
+      priorityInsertedAt: millis(d.priorityInsertedAt),
+      sequenceNumber: d.sequenceNumber ?? 0,
+      status: d.status ?? "waiting",
+      predictedDuration: Number(d.predictedDurationMin) || 8,
+      etaLower: millis(d.etaLower),
+      etaUpper: millis(d.etaUpper),
+      recommendedArrival: millis(d.recommendedArrival),
+      registeredAt: millis(d.registeredAt),
+      consultationStartedAt: millis(d.consultationStartedAt),
+      consultationEndedAt: millis(d.consultationEndedAt),
+      actualDuration: d.actualDurationMin,
+      etaRevisionCount: d.etaRevisionCount ?? 0,
+      predictionErrorMin: d.predictionErrorMin,
+    };
+  });
+  
+  visits.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+  return { doctors, visits };
+}
 
 export async function GET() {
   try {
@@ -35,7 +90,7 @@ export async function GET() {
       .where("status", "in", ["waiting", "in_consultation"])
       .get();
       
-    let visits: Visit[] = visitsSnap.docs.map(doc => {
+    const visits: Visit[] = visitsSnap.docs.map(doc => {
       const d = doc.data();
       return {
         id: doc.id,
@@ -76,9 +131,15 @@ export async function GET() {
       }
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load waiting room queue" },
-      { status: 500 }
-    );
+    console.warn("[WaitingRoom] Firestore read fallback to local state (quota/network):", error instanceof Error ? error.message : error);
+    try {
+      const fallback = await getLocalWaitingRoomData();
+      return NextResponse.json(fallback, { headers: { "Cache-Control": "no-store, max-age=0" } });
+    } catch {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to load waiting room queue" },
+        { status: 500 }
+      );
+    }
   }
 }
