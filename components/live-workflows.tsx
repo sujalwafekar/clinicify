@@ -1023,6 +1023,8 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
   const [toggleBusy, setToggleBusy] = useState(false);
   const [startBusy, setStartBusy] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
+  const [emergencyPatient, setEmergencyPatient] = useState<typeof patient | null>(null);
+  const seenPriorityIds = useRef<Set<string>>(new Set());
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Fetch medicines from Firestore (fall back to static list)
@@ -1030,6 +1032,22 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
   const medicines = fsRows.length > 0 ? fsRows : MEDICINES_STATIC;
 
   useEffect(() => { setStarted(false); setRemark(""); setItems([]); setReferrals([]); setSearch(""); }, [patient?.id]);
+
+  // Detect new priority/emergency patients while doctor is in consultation
+  useEffect(() => {
+    if (!doctor) return;
+    const allWaiting = waitingFor(state, doctor.id);
+    const newEmergency = allWaiting.find(
+      v => v.priorityLevel === 1 && !seenPriorityIds.current.has(v.id)
+    );
+    if (newEmergency) {
+      seenPriorityIds.current.add(newEmergency.id);
+      const isCurrentlyConsulting = started || state.visits.find(v => v.doctorId === doctor.id && v.status === "in_consultation");
+      if (isCurrentlyConsulting && newEmergency.id !== patient?.id) {
+        setEmergencyPatient(newEmergency as typeof patient);
+      }
+    }
+  }, [state.visits, doctor?.id]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -1127,8 +1145,86 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
   // Determine if the consultation is currently active
   const isConsulting = started || patient?.status === "in_consultation";
 
+  const waiting = waitingFor(state, doctor.id);
+  const inConsultation = state.visits.find(v => v.doctorId === doctor.id && v.status === "in_consultation");
+
   return (
     <>
+      {/* ── Emergency Alert Modal ── */}
+      {emergencyPatient && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
+        }}>
+          <div style={{
+            background: "var(--surface)", borderRadius: 20, padding: 32, maxWidth: 440, width: "100%",
+            boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+            border: "2px solid var(--red, #c62828)",
+            animation: "fadeInUp 0.2s ease",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: "50%",
+                background: "rgba(198, 40, 40, 0.12)", display: "flex",
+                alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0,
+              }}>🚨</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18, color: "var(--red, #c62828)" }}>Emergency Case Arrived</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Priority patient added to your queue</div>
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(198,40,40,0.06)", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid rgba(198,40,40,0.15)" }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{emergencyPatient?.patientName}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                Token {emergencyPatient?.token} · Age {emergencyPatient?.age}y · {String(emergencyPatient?.complaint ?? "").slice(0, 60)}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20 }}>
+              What would you like to do?
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                className="btn btn-primary"
+                style={{ background: "var(--red, #c62828)", borderColor: "var(--red, #c62828)", justifyContent: "center" }}
+                onClick={async () => {
+                  setEmergencyPatient(null);
+                  // Complete current consultation first, then emergency will auto-surface
+                  if (patient) {
+                    await run(callApi, notify, "complete", { visitId: patient.id, doctorId: doctor.id }, "Current consultation completed. Emergency patient is next.");
+                    setStarted(false);
+                  }
+                }}
+              >
+                🚨 Finish Current &amp; Take Emergency Next
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ justifyContent: "center" }}
+                onClick={() => {
+                  setEmergencyPatient(null);
+                  // Emergency is already top of queue — doctor just dismisses and handles it after current
+                  notify("Emergency patient is #1 in queue. They will be called after current patient.", "info");
+                }}
+              >
+                ✅ Noted — I&apos;ll Finish This Patient First
+              </button>
+              <button
+                className="btn btn-ghost"
+                style={{ justifyContent: "center", fontSize: 13 }}
+                onClick={() => setEmergencyPatient(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
@@ -1150,260 +1246,305 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
         </button>
       </div>
 
-      {/* Content */}
-      {!patient ? (
-        <div className="no-patient-card">
-          <div className="no-patient-icon">⏳</div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No Patients in Queue</div>
-          <p style={{ color: "var(--muted)" }}>
-            {isBreak ? "You are on break. Resume working to accept patients." : "Waiting for the next patient to be assigned."}
-          </p>
-        </div>
-      ) : !isConsulting ? (
-        /* Patient overview — before diagnosis */
-        <div className="patient-overview">
-          <div className="patient-overview-header">
-            <div className="patient-avatar-lg">{String(patient.patientName ?? "P").slice(0, 1)}</div>
-            <div className="patient-overview-info">
-              <div className="patient-name-lg" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {patient.patientName}
-                <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 400 }}>· Token {patient.token}</span>
-                {patient.priorityLevel === 1 && <PriorityBadge />}
+      {/* Doctor layout: sidebar + main */}
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+
+        {/* ── Patient Queue Sidebar ── */}
+        <div style={{
+          width: 260, minWidth: 240, flexShrink: 0,
+          background: "var(--surface)", borderRadius: 16, border: "1px solid var(--border)",
+          padding: "16px 0", position: "sticky", top: 80, maxHeight: "calc(100vh - 120px)", overflowY: "auto"
+        }}>
+          <div style={{ padding: "0 16px 12px", fontWeight: 700, fontSize: 13, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>
+            Queue ({waiting.length + (inConsultation ? 1 : 0)})
+          </div>
+
+          {/* In consultation */}
+          {inConsultation && (
+            <div style={{
+              padding: "12px 16px", borderBottom: "1px solid var(--border)",
+              background: "rgba(37, 99, 235, 0.06)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%", background: "var(--blue)",
+                  color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, fontWeight: 700, flexShrink: 0
+                }}>{String(inConsultation.patientName ?? "P").slice(0, 1)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inConsultation.patientName}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>Token {inConsultation.token}</div>
+                </div>
+                <span className="badge badge-blue" style={{ fontSize: 10, flexShrink: 0 }}>In Consult</span>
               </div>
-              <div className="patient-meta-row">
-                <span className="patient-meta-item">🎂 {patient.age} years</span>
-                <span className="patient-meta-item">📱 {patient.mobile ?? "—"}</span>
-              </div>
             </div>
-          </div>
+          )}
 
-          {/* Vitals */}
-          <div className="vitals-grid">
-            <div className="vital-card">
-              <div className="vital-value">{patient.age}</div>
-              <div className="vital-unit">Age (years)</div>
+          {/* Waiting patients */}
+          {waiting.length === 0 && !inConsultation && (
+            <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+              No patients waiting
             </div>
-            <div className="vital-card">
-              <div className="vital-value">{patient.token}</div>
-              <div className="vital-unit">Token</div>
-            </div>
-          </div>
-
-          <div className="complaint-box">
-            <div className="complaint-label">Chief Complaint</div>
-            <div className="complaint-text">{patient.complaint}</div>
-          </div>
-
-          <button className="btn btn-primary btn-lg btn-full" onClick={handleStart} disabled={startBusy || isBreak}>
-            {startBusy ? <><span className="btn-spinner" /> Starting…</> : "Start Diagnosis →"}
-          </button>
-        </div>
-      ) : (
-        /* Diagnosis mode */
-        <div className="diagnosis-layout">
-          {/* Patient info – compact sidebar */}
-          <div className="patient-mini-card">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div className="patient-avatar-lg" style={{ width: 38, height: 38, fontSize: 14 }}>{String(patient.patientName ?? "P").slice(0, 1)}</div>
-              <div className="patient-mini-name">{patient.patientName}</div>
-              {patient.priorityLevel === 1 && <PriorityBadge />}
-            </div>
-            <div className="patient-mini-meta">
-              Token: <strong>{patient.token}</strong><br />
-              Age: <strong>{patient.age} yrs</strong><br />
-              Phone: <strong>{patient.mobile ?? "—"}</strong>
-            </div>
-            <div className="patient-mini-complaint">
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 6 }}>Complaint</div>
-              {patient.complaint}
-            </div>
-          </div>
-
-          {/* Prescription builder */}
-          <div className="prescription-card">
-            {/* Remark */}
-            <div className="prescription-section">
-              <div className="prescription-section-title">📝 Post-Checkup Remark</div>
-              <textarea
-                className="form-input form-textarea"
-                value={remark}
-                onChange={e => setRemark(e.target.value)}
-                placeholder="Doctor's clinical remark after examination…"
-                style={{ minHeight: 90 }}
-              />
-            </div>
-
-            {/* Medicine Search + Table */}
-            <div className="prescription-section">
-              <div className="prescription-section-title">💊 Medicines</div>
-
-              <div className="med-search-wrapper" ref={searchRef}>
-                <span className="med-search-icon">🔍</span>
-                <input
-                  className="med-search-input"
-                  value={search}
-                  placeholder="Search medicine to add…"
-                  onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
-                  onFocus={() => setShowDropdown(true)}
-                  autoComplete="off"
-                />
-                {showDropdown && search.length > 0 && (
-                  <div className="med-dropdown">
-                    {visibleMeds.length === 0 ? (
-                      <div style={{ padding: "12px 14px", color: "var(--muted)", fontSize: 13 }}>No medicines found.</div>
-                    ) : visibleMeds.map(med => (
-                      <div
-                        key={String(med.id)}
-                        className="med-dropdown-item"
-                        onMouseDown={e => { e.preventDefault(); addMed(med); }}
-                      >
-                        <span className="med-dropdown-name">{String(med.name)}</span>
-                        <span className={`med-dropdown-stock badge ${String(med.stockStatus) === "available" ? "badge-green" : "badge-amber"}`}>
-                          {String(med.stockStatus).replace("_", " ")}
-                        </span>
-                        <span style={{ fontSize: 14, color: "var(--blue)" }}>＋</span>
-                      </div>
-                    ))}
+          )}
+          {waiting.map((v, idx) => (
+            <div key={v.id} style={{
+              padding: "10px 16px", borderBottom: "1px solid var(--border)",
+              background: v.id === patient?.id && !isConsulting ? "rgba(37, 99, 235, 0.04)" : "transparent",
+              cursor: "default"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: v.priorityLevel === 1 ? "var(--red, #c62828)" : "var(--blue-light, #e3f2fd)",
+                  color: v.priorityLevel === 1 ? "#fff" : "var(--blue)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, flexShrink: 0
+                }}>{idx + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
+                    {v.patientName}
+                    {v.priorityLevel === 1 && <span style={{ color: "var(--red, #c62828)", fontSize: 10 }}>🔴</span>}
                   </div>
-                )}
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {v.token} · {v.age}y · {String(v.complaint ?? "").slice(0, 25)}{(v.complaint?.length ?? 0) > 25 ? "…" : ""}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Main Content ── */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {!patient ? (
+            <div className="no-patient-card">
+              <div className="no-patient-icon">⏳</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No Patients in Queue</div>
+              <p style={{ color: "var(--muted)" }}>
+                {isBreak ? "You are on break. Resume working to accept patients." : "Waiting for the next patient to be assigned."}
+              </p>
+            </div>
+          ) : !isConsulting ? (
+            /* Patient overview — before diagnosis */
+            <div className="patient-overview">
+              <div className="patient-overview-header">
+                <div className="patient-avatar-lg">{String(patient.patientName ?? "P").slice(0, 1)}</div>
+                <div className="patient-overview-info">
+                  <div className="patient-name-lg" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {patient.patientName}
+                    <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 400 }}>· Token {patient.token}</span>
+                    {patient.priorityLevel === 1 && <PriorityBadge />}
+                  </div>
+                  <div className="patient-meta-row">
+                    <span className="patient-meta-item">🎂 {patient.age} years</span>
+                    <span className="patient-meta-item">📱 {patient.mobile ?? "—"}</span>
+                  </div>
+                </div>
               </div>
 
-              {items.length > 0 && (
-                <div className="med-table-wrapper">
-                  <table className="med-table">
-                    <thead>
-                      <tr>
-                        <th>Medicine</th>
-                        <th>Per Dose</th>
-                        <th>When to Take</th>
-                        <th>Frequency</th>
-                        <th>Days</th>
-                        <th>Qty</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item, idx) => (
-                        <tr key={item.id}>
-                          <td style={{ fontWeight: 600, color: "var(--ink)", minWidth: 140 }}>{item.name}</td>
-                          <td>
-                            <select
-                              value={item.dosage}
-                              onChange={e => updateItem(idx, "dosage", e.target.value)}
-                              style={{ minWidth: 100 }}
-                            >
-                              <option value="">Select…</option>
-                              <option value="½ tablet">½ tablet</option>
-                              <option value="1 tablet">1 tablet</option>
-                              <option value="2 tablets">2 tablets</option>
-                              <option value="1 capsule">1 capsule</option>
-                              <option value="2 capsules">2 capsules</option>
-                              <option value="5 ml">5 ml</option>
-                              <option value="10 ml">10 ml</option>
-                              <option value="1 puff">1 puff</option>
-                              <option value="2 puffs">2 puffs</option>
-                            </select>
-                          </td>
-                          <td>
-                            <select
-                              value={item.timing}
-                              onChange={e => updateItem(idx, "timing", e.target.value)}
-                              style={{ minWidth: 110 }}
-                            >
-                              <option value="">Select…</option>
-                              <option>Before food</option>
-                              <option>After food</option>
-                              <option>With food</option>
-                              <option>At bedtime</option>
-                              <option>Empty stomach</option>
-                            </select>
-                          </td>
-                          <td>
-                            <select
-                              value={item.frequency}
-                              onChange={e => updateItem(idx, "frequency", e.target.value)}
-                              style={{ minWidth: 110 }}
-                            >
-                              <option value="">Select…</option>
-                              <option>Once daily</option>
-                              <option>Twice daily</option>
-                              <option>Thrice daily</option>
-                              <option>Every 8 hours</option>
-                              <option>Every 6 hours</option>
-                              <option>As needed</option>
-                            </select>
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.duration}
-                              onChange={e => updateItem(idx, "duration", e.target.value)}
-                              placeholder="Days"
-                              style={{ width: 60 }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={e => updateItem(idx, "quantity", e.target.value)}
-                              placeholder="Qty"
-                              style={{ width: 60 }}
-                            />
-                          </td>
-                          <td>
-                            <button className="med-table-remove" onClick={() => removeItem(idx)} title="Remove">✕</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* Vitals */}
+              <div className="vitals-grid">
+                <div className="vital-card">
+                  <div className="vital-value">{patient.age}</div>
+                  <div className="vital-unit">Age (years)</div>
                 </div>
-              )}
+                <div className="vital-card">
+                  <div className="vital-value">{patient.token}</div>
+                  <div className="vital-unit">Token</div>
+                </div>
+              </div>
 
-              {items.length === 0 && (
-                <div style={{ textAlign: "center", padding: "20px", color: "var(--muted)", fontSize: 13 }}>
-                  Search and add medicines above.
-                </div>
-              )}
-            </div>
+              <div className="complaint-box">
+                <div className="complaint-label">Chief Complaint</div>
+                <div className="complaint-text">{patient.complaint}</div>
+              </div>
 
-            {/* Referrals */}
-            <div className="prescription-section">
-              <div className="prescription-section-title">↗ Department Referrals</div>
-              {referrals.map((ref, idx) => (
-                <div key={idx} className="referral-row">
-                  <select
-                    value={ref}
-                    onChange={e => setReferrals(curr => curr.map((r, i) => i === idx ? e.target.value : r))}
-                    className="form-select"
-                  >
-                    <option value="">Choose department…</option>
-                    {DEPARTMENTS.filter(d => d !== doctor.department).map(d => (
-                      <option key={d}>{d}</option>
-                    ))}
-                  </select>
-                  <button className="referral-row-remove" onClick={() => setReferrals(curr => curr.filter((_, i) => i !== idx))}>✕</button>
-                </div>
-              ))}
-              <button className="btn btn-ghost btn-sm" onClick={() => setReferrals(curr => [...curr, ""])}>
-                ＋ Add Referral
+              <button className="btn btn-primary btn-lg btn-full" onClick={handleStart} disabled={startBusy || isBreak}>
+                {startBusy ? <><span className="btn-spinner" /> Starting…</> : "Start Diagnosis →"}
               </button>
             </div>
+          ) : (
+            /* Diagnosis mode */
+            <div className="diagnosis-layout">
+              {/* Patient info – compact sidebar */}
+              <div className="patient-mini-card">
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div className="patient-avatar-lg" style={{ width: 38, height: 38, fontSize: 14 }}>{String(patient.patientName ?? "P").slice(0, 1)}</div>
+                  <div className="patient-mini-name">{patient.patientName}</div>
+                  {patient.priorityLevel === 1 && <PriorityBadge />}
+                </div>
+                <div className="patient-mini-meta">
+                  Token: <strong>{patient.token}</strong><br />
+                  Age: <strong>{patient.age} yrs</strong><br />
+                  Phone: <strong>{patient.mobile ?? "—"}</strong>
+                </div>
+                <div className="patient-mini-complaint">
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 6 }}>Complaint</div>
+                  {patient.complaint}
+                </div>
+              </div>
 
-            {/* Generate */}
-            <button
-              className="btn btn-primary btn-full btn-lg"
-              disabled={genBusy}
-              onClick={handleGenerate}
-            >
-              {genBusy ? <><span className="btn-spinner" /> Generating…</> : "📄 Generate & Download Prescription"}
-            </button>
-          </div>
+              {/* Prescription builder */}
+              <div className="prescription-card">
+                {/* Remark */}
+                <div className="prescription-section">
+                  <div className="prescription-section-title">📝 Post-Checkup Remark</div>
+                  <textarea
+                    className="form-input form-textarea"
+                    value={remark}
+                    onChange={e => setRemark(e.target.value)}
+                    placeholder="Doctor's clinical remark after examination…"
+                    style={{ minHeight: 90 }}
+                  />
+                </div>
+
+                {/* Medicine Search + Table */}
+                <div className="prescription-section">
+                  <div className="prescription-section-title">💊 Medicines</div>
+
+                  <div className="med-search-wrapper" ref={searchRef}>
+                    <span className="med-search-icon">🔍</span>
+                    <input
+                      className="med-search-input"
+                      value={search}
+                      placeholder="Search medicine to add…"
+                      onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
+                      onFocus={() => setShowDropdown(true)}
+                      autoComplete="off"
+                    />
+                    {showDropdown && search.length > 0 && (
+                      <div className="med-dropdown">
+                        {visibleMeds.length === 0 ? (
+                          <div style={{ padding: "12px 14px", color: "var(--muted)", fontSize: 13 }}>No medicines found.</div>
+                        ) : visibleMeds.map(med => (
+                          <div
+                            key={String(med.id)}
+                            className="med-dropdown-item"
+                            onMouseDown={e => { e.preventDefault(); addMed(med); }}
+                          >
+                            <span className="med-dropdown-name">{String(med.name)}</span>
+                            <span className={`med-dropdown-stock badge ${String(med.stockStatus) === "available" ? "badge-green" : "badge-amber"}`}>
+                              {String(med.stockStatus).replace("_", " ")}
+                            </span>
+                            <span style={{ fontSize: 14, color: "var(--blue)" }}>＋</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {items.length > 0 && (
+                    <div className="med-table-wrapper">
+                      <table className="med-table">
+                        <thead>
+                          <tr>
+                            <th>Medicine</th>
+                            <th>Per Dose</th>
+                            <th>When to Take</th>
+                            <th>Frequency</th>
+                            <th>Days</th>
+                            <th>Qty</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item, idx) => (
+                            <tr key={item.id}>
+                              <td style={{ fontWeight: 600, color: "var(--ink)", minWidth: 140 }}>{item.name}</td>
+                              <td>
+                                <select value={item.dosage} onChange={e => updateItem(idx, "dosage", e.target.value)} style={{ minWidth: 100 }}>
+                                  <option value="">Select…</option>
+                                  <option value="½ tablet">½ tablet</option>
+                                  <option value="1 tablet">1 tablet</option>
+                                  <option value="2 tablets">2 tablets</option>
+                                  <option value="1 capsule">1 capsule</option>
+                                  <option value="2 capsules">2 capsules</option>
+                                  <option value="5 ml">5 ml</option>
+                                  <option value="10 ml">10 ml</option>
+                                  <option value="1 puff">1 puff</option>
+                                  <option value="2 puffs">2 puffs</option>
+                                </select>
+                              </td>
+                              <td>
+                                <select value={item.timing} onChange={e => updateItem(idx, "timing", e.target.value)} style={{ minWidth: 110 }}>
+                                  <option value="">Select…</option>
+                                  <option>Before food</option>
+                                  <option>After food</option>
+                                  <option>With food</option>
+                                  <option>At bedtime</option>
+                                  <option>Empty stomach</option>
+                                </select>
+                              </td>
+                              <td>
+                                <select value={item.frequency} onChange={e => updateItem(idx, "frequency", e.target.value)} style={{ minWidth: 110 }}>
+                                  <option value="">Select…</option>
+                                  <option>Once daily</option>
+                                  <option>Twice daily</option>
+                                  <option>Thrice daily</option>
+                                  <option>Every 8 hours</option>
+                                  <option>Every 6 hours</option>
+                                  <option>As needed</option>
+                                </select>
+                              </td>
+                              <td>
+                                <input type="number" min="1" value={item.duration} onChange={e => updateItem(idx, "duration", e.target.value)} placeholder="Days" style={{ width: 60 }} />
+                              </td>
+                              <td>
+                                <input type="number" min="1" value={item.quantity} onChange={e => updateItem(idx, "quantity", e.target.value)} placeholder="Qty" style={{ width: 60 }} />
+                              </td>
+                              <td>
+                                <button className="med-table-remove" onClick={() => removeItem(idx)} title="Remove">✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {items.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "20px", color: "var(--muted)", fontSize: 13 }}>
+                      Search and add medicines above.
+                    </div>
+                  )}
+                </div>
+
+                {/* Referrals */}
+                <div className="prescription-section">
+                  <div className="prescription-section-title">↗ Department Referrals</div>
+                  {referrals.map((ref, idx) => (
+                    <div key={idx} className="referral-row">
+                      <select
+                        value={ref}
+                        onChange={e => setReferrals(curr => curr.map((r, i) => i === idx ? e.target.value : r))}
+                        className="form-select"
+                      >
+                        <option value="">Choose department…</option>
+                        {DEPARTMENTS.filter(d => d !== doctor.department).map(d => (
+                          <option key={d}>{d}</option>
+                        ))}
+                      </select>
+                      <button className="referral-row-remove" onClick={() => setReferrals(curr => curr.filter((_, i) => i !== idx))}>✕</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setReferrals(curr => [...curr, ""])}>
+                    ＋ Add Referral
+                  </button>
+                </div>
+
+                {/* Generate */}
+                <button
+                  className="btn btn-primary btn-full btn-lg"
+                  disabled={genBusy}
+                  onClick={handleGenerate}
+                >
+                  {genBusy ? <><span className="btn-spinner" /> Generating…</> : "📄 Generate & Download Prescription"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 }
