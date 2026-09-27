@@ -70,7 +70,7 @@ export default function TrackingPage({
         );
 
     void load();
-    const id = window.setInterval(load, 3000);
+    const id = window.setInterval(load, 10000);
     return () => window.clearInterval(id);
   }, [key]);
 
