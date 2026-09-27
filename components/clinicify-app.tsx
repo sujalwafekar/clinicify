@@ -24,10 +24,10 @@ const DEPARTMENTS = [
 ];
 
 const ROLE_META: Record<Role, { icon: string; label: string; desc: string; colorClass: string }> = {
-  admin:       { icon: "🏛️", label: "Admin",        desc: "Manage staff requests & operations", colorClass: "admin"   },
-  doctor:      { icon: "🩺", label: "Doctor",       desc: "View queue & write prescriptions",    colorClass: "doctor"  },
-  receptionist:{ icon: "📋", label: "Receptionist", desc: "Register patients & assign rooms",    colorClass: "recept"  },
-  pharmacist:  { icon: "💊", label: "Pharmacist",   desc: "Dispense medicines & generate bills", colorClass: "pharma"  },
+  admin: { icon: "🏛️", label: "Admin", desc: "Manage staff requests & operations", colorClass: "admin" },
+  doctor: { icon: "🩺", label: "Doctor", desc: "View queue & write prescriptions", colorClass: "doctor" },
+  receptionist: { icon: "📋", label: "Receptionist", desc: "Register patients & assign rooms", colorClass: "recept" },
+  pharmacist: { icon: "💊", label: "Pharmacist", desc: "Dispense medicines & generate bills", colorClass: "pharma" },
 };
 
 /* ── Toast ──────────────────────────────────────── */
@@ -159,7 +159,7 @@ type AuthStep = { role: Role; mode: "signin" } | null;
 
 function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]) => void }) {
   const [authStep, setAuthStep] = useState<AuthStep>(null);
-  
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -211,7 +211,7 @@ function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]
             <div className="landing-role-selection">
               <h2 className="landing-heading">Welcome to Clinicify</h2>
               <p className="landing-subheading">Select your role to securely sign in to your dashboard.</p>
-              
+
               <div className="role-grid-split">
                 {(Object.entries(ROLE_META) as [Role, typeof ROLE_META[Role]][]).map(([role, meta]) => (
                   <button
@@ -231,7 +231,7 @@ function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]
               <button className="btn-back-split" onClick={() => setAuthStep(null)}>
                 ← Back to roles
               </button>
-              
+
               <div className="auth-header-split">
                 <div className={`auth-icon-large ${ROLE_META[authStep.role].colorClass}`}>
                   {ROLE_META[authStep.role].icon}
@@ -249,25 +249,25 @@ function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]
               <form className="auth-form-split" onSubmit={submit}>
                 <div className="form-field-split">
                   <label className="auth-label-split">Email Address</label>
-                  <input 
-                    className="auth-input-split" 
-                    required 
-                    type="email" 
-                    value={email} 
-                    onChange={e => setEmail(e.target.value)} 
-                    placeholder="name@hospital.com" 
+                  <input
+                    className="auth-input-split"
+                    required
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="name@hospital.com"
                   />
                 </div>
 
                 <div className="form-field-split">
                   <label className="auth-label-split">Password</label>
-                  <input 
-                    className="auth-input-split" 
-                    required 
-                    type="password" 
-                    value={password} 
-                    onChange={e => setPassword(e.target.value)} 
-                    placeholder="Enter your password" 
+                  <input
+                    className="auth-input-split"
+                    required
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Enter your password"
                   />
                 </div>
 
@@ -290,9 +290,9 @@ function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]
                   onClick={() => {
                     const creds: Record<Role, { email: string; pass: string }> = {
                       admin: { email: "admin@clinicify.test", pass: "A12345678" },
-                      doctor: { email: "doctor.mehta@clinicify.test", pass: "D12345678" },
+                      doctor: { email: "doctor@clinicify.test", pass: "D12345678" },
                       receptionist: { email: "reception@clinicify.test", pass: "R12345678" },
-                      pharmacist: { email: "pharma@clinicify.test", pass: "P12345678" },
+                      pharmacist: { email: "pharmacy@clinicify.test", pass: "P12345678" },
                     };
                     const c = creds[authStep.role];
                     setEmail(c.email);
