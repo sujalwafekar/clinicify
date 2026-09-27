@@ -8,7 +8,7 @@ import { PriorityBadge, PriorityActionButton, PriorityConfirmationModal } from "
 
 /* ── Shared types ─────────────────────────────── */
 type Call = (path: string, body?: unknown) => Promise<unknown>;
-type Row  = { id: string; [key: string]: unknown };
+type Row = { id: string;[key: string]: unknown };
 type NotifyFn = (msg: string, type?: "success" | "error" | "info") => void;
 
 const DEPARTMENTS = [
@@ -18,16 +18,16 @@ const DEPARTMENTS = [
 ];
 
 const MEDICINES_STATIC = [
-  { id: "m-paracetamol",  name: "Paracetamol 500mg",        stockStatus: "available" },
-  { id: "m-amoxicillin",  name: "Amoxicillin 250mg",         stockStatus: "available" },
-  { id: "m-ibuprofen",    name: "Ibuprofen 400mg",           stockStatus: "available" },
-  { id: "m-cetirizine",   name: "Cetirizine 10mg",           stockStatus: "available" },
-  { id: "m-metformin",    name: "Metformin 500mg",           stockStatus: "available" },
-  { id: "m-amlodipine",   name: "Amlodipine 5mg",            stockStatus: "low_stock" },
-  { id: "m-omeprazole",   name: "Omeprazole 20mg",           stockStatus: "available" },
-  { id: "m-azithromycin", name: "Azithromycin 500mg",        stockStatus: "available" },
-  { id: "m-atorvastatin", name: "Atorvastatin 10mg",         stockStatus: "available" },
-  { id: "m-ors",          name: "ORS Sachet",                stockStatus: "available" },
+  { id: "m-paracetamol", name: "Paracetamol 500mg", stockStatus: "available" },
+  { id: "m-amoxicillin", name: "Amoxicillin 250mg", stockStatus: "available" },
+  { id: "m-ibuprofen", name: "Ibuprofen 400mg", stockStatus: "available" },
+  { id: "m-cetirizine", name: "Cetirizine 10mg", stockStatus: "available" },
+  { id: "m-metformin", name: "Metformin 500mg", stockStatus: "available" },
+  { id: "m-amlodipine", name: "Amlodipine 5mg", stockStatus: "low_stock" },
+  { id: "m-omeprazole", name: "Omeprazole 20mg", stockStatus: "available" },
+  { id: "m-azithromycin", name: "Azithromycin 500mg", stockStatus: "available" },
+  { id: "m-atorvastatin", name: "Atorvastatin 10mg", stockStatus: "available" },
+  { id: "m-ors", name: "ORS Sachet", stockStatus: "available" },
 ];
 
 /* ── Firestore live collection hook ─────────────── */
@@ -301,24 +301,24 @@ export function AdminLive({ state, callApi, notify }: { state: QueueState; callA
 // Departments list
 const DEPT_LIST = [
   { key: "General Medicine", label: "General Medicine", desc: "General OPD, fever, cough, cold" },
-  { key: "ENT",              label: "ENT",              desc: "Ear pain, sinusitis, throat problems" },
-  { key: "Ophthalmology",    label: "Ophthalmology",    desc: "Eye pain, vision issues, infection" },
-  { key: "Dentistry",        label: "Dentistry",        desc: "Tooth pain, cavity, gum issues" },
-  { key: "Neurology",        label: "Neurology",        desc: "Headache, seizures, nerve issues" },
-  { key: "Cardiology",       label: "Cardiology",       desc: "Chest pain, BP, heart concerns" },
-  { key: "Radiology",        label: "Radiology",        desc: "X-ray, MRI, CT scan requests" },
-  { key: "Orthopedics",      label: "Orthopedics",      desc: "Joint pain, fractures, sports injury" },
-  { key: "Gynecology",       label: "Gynecology",       desc: "Women's health, OB/GYN" },
-  { key: "Pediatrics",       label: "Pediatrics",       desc: "Child health, vaccination, growth" },
-  { key: "Dermatology",      label: "Dermatology",      desc: "Skin rash, acne, allergy, infection" },
-  { key: "Psychiatry",       label: "Psychiatry",       desc: "Mental health, anxiety, counseling" },
+  { key: "ENT", label: "ENT", desc: "Ear pain, sinusitis, throat problems" },
+  { key: "Ophthalmology", label: "Ophthalmology", desc: "Eye pain, vision issues, infection" },
+  { key: "Dentistry", label: "Dentistry", desc: "Tooth pain, cavity, gum issues" },
+  { key: "Neurology", label: "Neurology", desc: "Headache, seizures, nerve issues" },
+  { key: "Cardiology", label: "Cardiology", desc: "Chest pain, BP, heart concerns" },
+  { key: "Radiology", label: "Radiology", desc: "X-ray, MRI, CT scan requests" },
+  { key: "Orthopedics", label: "Orthopedics", desc: "Joint pain, fractures, sports injury" },
+  { key: "Gynecology", label: "Gynecology", desc: "Women's health, OB/GYN" },
+  { key: "Pediatrics", label: "Pediatrics", desc: "Child health, vaccination, growth" },
+  { key: "Dermatology", label: "Dermatology", desc: "Skin rash, acne, allergy, infection" },
+  { key: "Psychiatry", label: "Psychiatry", desc: "Mental health, anxiety, counseling" },
 ];
 
 const COMPLAINT_CATEGORIES = [
-  { value: "general",   label: "General" },
-  { value: "fever",     label: "Fever" },
-  { value: "headache",  label: "Headache" },
-  { value: "injury",    label: "Injury" },
+  { value: "general", label: "General" },
+  { value: "fever", label: "Fever" },
+  { value: "headache", label: "Headache" },
+  { value: "injury", label: "Injury" },
   { value: "follow_up", label: "Follow-up" },
 ] as const;
 
@@ -387,7 +387,7 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
 
   const referrals = useRows("referralRequests");
 
-  const effectiveDept = receptionDept ?? form.department;
+  const effectiveDept = form.department || receptionDept || "";
   const filteredDoctors = effectiveDept ? state.doctors.filter(d => d.department === effectiveDept) : state.doctors;
   const queueVisits = state.visits.filter(v => v.status === "waiting" || v.status === "in_consultation");
 
@@ -612,10 +612,10 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
             })}
           </div>
         )}
-        
-        <PriorityConfirmationModal 
-          isOpen={priorityModal.isOpen} 
-          onClose={() => setPriorityModal(m => ({ ...m, isOpen: false }))} 
+
+        <PriorityConfirmationModal
+          isOpen={priorityModal.isOpen}
+          onClose={() => setPriorityModal(m => ({ ...m, isOpen: false }))}
           onConfirm={handleMarkPriority}
           patientName={priorityModal.patientName}
           token={priorityModal.token}
@@ -839,7 +839,7 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
                   </select>
                   {errors.complaintCategory && <div className="field-error">{errors.complaintCategory}</div>}
                 </div>
-                {!receptionDept && (
+                {/* Department — always shown so receptionist can register to any department */}
                   <div className="form-field">
                     <label className="form-label">Department *</label>
                     <select className={`form-select${errors.department ? " input-error" : ""}`} value={form.department} onChange={e => ch("department", e.target.value)}>
@@ -848,7 +848,6 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
                     </select>
                     {errors.department && <div className="field-error">{errors.department}</div>}
                   </div>
-                )}
               </div>
               {effectiveDept && !receptionDept && (<div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>{DEPT_LIST.find(d => d.key === effectiveDept)?.desc}</div>)}
 
@@ -1136,7 +1135,7 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
             <div className="patient-avatar-lg">{String(patient.patientName ?? "P").slice(0, 1)}</div>
             <div className="patient-overview-info">
               <div className="patient-name-lg" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {patient.patientName} 
+                {patient.patientName}
                 <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 400 }}>· Token {patient.token}</span>
                 {patient.priorityLevel === 1 && <PriorityBadge />}
               </div>
