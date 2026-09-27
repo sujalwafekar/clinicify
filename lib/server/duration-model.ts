@@ -59,7 +59,7 @@ async function fetchDoctorStats(doctorId: string): Promise<DurationStats> {
     const snap = await db
       .collection("visits")
       .where("doctorId", "==", doctorId)
-      .limit(200)
+      .limit(20)
       .get();
 
     const buckets: Record<string, { weightedSum: number; totalWeight: number }> = {};
@@ -125,7 +125,7 @@ async function fetchGlobalStats(): Promise<GlobalStats> {
     const snap = await db
       .collection("visits")
       .where("status", "==", "completed")
-      .limit(200)
+      .limit(20)
       .get();
 
     const buckets: Record<string, { weightedSum: number; totalWeight: number }> = {};

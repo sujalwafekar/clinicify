@@ -30,9 +30,12 @@ export async function GET() {
       };
     });
 
-    // 2. Fetch visits (real records only)
-    const visitsSnap = await db.collection("visits").orderBy("sequenceNumber", "asc").get();
-    const visits: Visit[] = visitsSnap.docs.map(doc => {
+    // 2. Fetch visits (real records only - only active ones to save quota)
+    const visitsSnap = await db.collection("visits")
+      .where("status", "in", ["waiting", "in_consultation"])
+      .get();
+      
+    let visits: Visit[] = visitsSnap.docs.map(doc => {
       const d = doc.data();
       return {
         id: doc.id,
@@ -60,6 +63,9 @@ export async function GET() {
         predictionErrorMin: d.predictionErrorMin,
       };
     });
+    
+    // Sort in memory since we couldn't orderBy due to the 'in' query
+    visits.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
     return NextResponse.json(
       { doctors, visits },

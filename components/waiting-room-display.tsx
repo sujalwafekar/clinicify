@@ -106,10 +106,10 @@ export function WaitingRoomDisplay({
     }
   };
 
-  // Poll real-time database every 2 seconds so public display always mirrors live mutations
+  // Poll real-time database every 10 seconds so public display always mirrors live mutations
   useEffect(() => {
     void fetchLive();
-    const interval = setInterval(fetchLive, 2000);
+    const interval = setInterval(fetchLive, 10000);
     return () => clearInterval(interval);
   }, [soundEnabled]);
 
