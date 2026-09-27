@@ -42,7 +42,7 @@ export function subscribeClinicify(
   };
 
   void pollServer();
-  const pollInterval = setInterval(pollServer, 5000);
+  const pollInterval = setInterval(pollServer, 3000);
 
   // 2. Client onSnapshot listeners (when Firebase security rules allow)
   const unsubs: Array<() => void> = [];

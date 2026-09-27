@@ -13,7 +13,7 @@ const millis = (value: unknown): number | undefined => {
 };
 
 // ── Server-side in-memory cache to prevent quota exhaustion ──────────
-const CACHE_TTL_MS = 3_000; // 3 seconds
+const CACHE_TTL_MS = 2_000; // 2 seconds
 
 async function getState(): Promise<CachedState> {
   const cached = getCachedState();
