@@ -152,6 +152,20 @@ export function WaitingRoomDisplay({
     }
   };
 
+  // Auto-enter fullscreen on mount
+  useEffect(() => {
+    const enter = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      }
+    };
+    // Small delay so browser allows it after user interaction (page navigation counts)
+    const t = setTimeout(enter, 300);
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => { clearTimeout(t); document.removeEventListener("fullscreenchange", onFsChange); };
+  }, []);
+
   // Map real doctors to clinics
   const clinics = useMemo(() => {
     // If doctors collection has records, map each doctor
@@ -247,6 +261,34 @@ export function WaitingRoomDisplay({
         onMouseLeave={e => (e.currentTarget.style.opacity = "0.85")}
       >
         ← Back
+      </button>
+      {/* Fullscreen toggle */}
+      <button
+        onClick={toggleFullscreen}
+        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+        style={{
+          position: "absolute",
+          top: 14,
+          left: 100,
+          zIndex: 100,
+          background: "#1565c0",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: 10,
+          padding: "8px 14px",
+          fontSize: 16,
+          fontWeight: 700,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          boxShadow: "0 2px 12px rgba(21,101,192,0.35)",
+          opacity: 0.85,
+          transition: "opacity 0.2s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+        onMouseLeave={e => (e.currentTarget.style.opacity = "0.85")}
+      >
+        {isFullscreen ? "⛶" : "⛶"}
       </button>
       {/* ── MAIN TOKEN BOARD ── */}
       <div style={{
