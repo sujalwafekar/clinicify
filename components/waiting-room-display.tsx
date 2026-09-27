@@ -319,7 +319,7 @@ export function WaitingRoomDisplay({
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
       position: "relative",
     }}>
-      {/* ── Top Left Action Bar: Back & Fullscreen ── */}
+      {/* ── Top Left Action: Blue Back Button ── */}
       <div style={{
         position: "absolute",
         top: 14,
@@ -327,9 +327,7 @@ export function WaitingRoomDisplay({
         zIndex: 100,
         display: "flex",
         alignItems: "center",
-        gap: 10,
       }}>
-        {/* Back Button */}
         <button
           onClick={handleBack}
           style={{
@@ -337,7 +335,7 @@ export function WaitingRoomDisplay({
             color: "#ffffff",
             border: "none",
             borderRadius: 8,
-            padding: "8px 16px",
+            padding: "8px 18px",
             fontSize: 14,
             fontWeight: 700,
             cursor: "pointer",
@@ -359,40 +357,6 @@ export function WaitingRoomDisplay({
           }}
         >
           ← Back
-        </button>
-
-        {/* Fullscreen Button */}
-        <button
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "Exit Fullscreen (Esc)" : "Enter Fullscreen (F11)"}
-          style={{
-            background: "#1565c0",
-            color: "#ffffff",
-            border: "none",
-            borderRadius: 8,
-            padding: "8px 16px",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            boxShadow: "0 2px 10px rgba(21,101,192,0.35)",
-            letterSpacing: "0.02em",
-            opacity: 0.9,
-            transition: "all 0.2s ease",
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.opacity = "1";
-            e.currentTarget.style.background = "#0d47a1";
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.opacity = "0.9";
-            e.currentTarget.style.background = "#1565c0";
-          }}
-        >
-          <span style={{ fontSize: 16 }}>{isFullscreen ? "🗗" : "⛶"}</span>
-          <span>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
         </button>
       </div>
       {/* ── MAIN TOKEN BOARD ── */}
