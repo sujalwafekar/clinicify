@@ -6,7 +6,7 @@ import type { ComplaintCategory, Role } from "@/lib/domain/types";
 import { sendNotification } from "./notifications";
 import { buildVisitConfirmationEmail, buildQueueUpdateEmail } from "./email-templates";
 import { predictDuration } from "./duration-model";
-import { invalidateRealtimeCache } from "@/app/api/realtime-state/route";
+import { invalidateRealtimeCache } from "@/lib/server/realtime-cache";
 const buffer = 2; const arrivalBuffer = 10;
 const queueId = (doctorId: string) => `H1-${new Date().toISOString().slice(0, 10)}-Q-${doctorId}`;
 const eta = (minutes: number, now: number) => ({ etaLower: Timestamp.fromMillis(now + Math.max(0, minutes - uncertaintyFor(minutes)) * 60000), etaUpper: Timestamp.fromMillis(now + (minutes + uncertaintyFor(minutes)) * 60000), recommendedArrival: Timestamp.fromMillis(now + Math.max(0, minutes - uncertaintyFor(minutes) - arrivalBuffer) * 60000) });

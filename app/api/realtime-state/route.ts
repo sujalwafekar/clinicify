@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Doctor, QueueEvent, Visit } from "@/lib/domain/types";
+import { getCachedState, setCachedState } from "@/lib/server/realtime-cache";
+import type { CachedState } from "@/lib/server/realtime-cache";
 
 const millis = (value: unknown): number | undefined => {
   if (typeof value === "object" && value !== null && "toMillis" in value && typeof (value as any).toMillis === "function") {
@@ -11,22 +13,11 @@ const millis = (value: unknown): number | undefined => {
 };
 
 // ── Server-side in-memory cache to prevent quota exhaustion ──────────
-// Multiple clients polling every few seconds will share this single cache
-// instead of each triggering fresh Firestore reads.
-interface CachedState {
-  doctors: Doctor[];
-  allVisits: Visit[];       // active visits only (waiting + in_consultation)
-  doctorVisits: Map<string, Visit[]>; // pre-filtered by doctorId
-  events: QueueEvent[];
-  expiresAt: number;
-}
-let cachedState: CachedState | null = null;
-const CACHE_TTL_MS = 3_000; // 3 seconds — fresh enough for a clinic, saves 95%+ reads
+const CACHE_TTL_MS = 3_000; // 3 seconds
 
 async function getState(): Promise<CachedState> {
-  if (cachedState && cachedState.expiresAt > Date.now()) {
-    return cachedState;
-  }
+  const cached = getCachedState();
+  if (cached) return cached;
 
   const db = adminDb();
 
@@ -109,7 +100,7 @@ async function getState(): Promise<CachedState> {
     };
   });
 
-  cachedState = {
+  const state: CachedState = {
     doctors,
     allVisits,
     doctorVisits,
@@ -117,12 +108,8 @@ async function getState(): Promise<CachedState> {
     expiresAt: Date.now() + CACHE_TTL_MS,
   };
 
-  return cachedState;
-}
-
-// Allow other server code to bust the cache after mutations (register, call-next, complete, etc.)
-export function invalidateRealtimeCache() {
-  cachedState = null;
+  setCachedState(state);
+  return state;
 }
 
 export async function GET(request: NextRequest) {
