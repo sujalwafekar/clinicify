@@ -15,6 +15,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "approved" });
     }
 
+    // Also promote doctor requests created before the auto-approval release.
+    // This makes the rollout self-healing for doctors already waiting in the queue.
+    if (role !== "doctor") {
+      const pendingDoctor = await adminDb().collection("staffRequests")
+        .where("uid", "==", uid)
+        .where("role", "==", "doctor")
+        .where("status", "==", "pending")
+        .limit(1)
+        .get();
+      if (!pendingDoctor.empty) {
+        const requestDoc = pendingDoctor.docs[0];
+        const data = requestDoc.data();
+        const doctorId = `doctor-${uid}`;
+        await adminAuth().setCustomUserClaims(uid, { role: "doctor", hospitalId: "H1", department: data.department, doctorId });
+        await adminDb().collection("users").doc(uid).set({ uid, email: data.email ?? "", displayName: data.displayName ?? "Doctor", role: "doctor", department: data.department, staffId: data.staffId, doctorId, hospitalId: "H1", active: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await adminDb().collection("doctors").doc(doctorId).set({ name: data.displayName ?? "Doctor", department: data.department, departmentId: String(data.department ?? "general").toLowerCase().replaceAll(" ", "-"), room: "Unassigned", status: "available", hospitalId: "H1", currentVisitId: null, averageDuration: 8, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await requestDoc.ref.update({ status: "approved", autoApproved: true, reviewedBy: "system:auto-approve-doctor", reviewedAt: FieldValue.serverTimestamp() });
+        return NextResponse.json({ status: "approved", autoApproved: true });
+      }
+    }
+
     // Doctors are auto-approved after onboarding. Receptionists and
     // pharmacists continue through the admin login approval queue.
     if (role === "doctor") {
