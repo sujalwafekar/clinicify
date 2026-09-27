@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { subscribeClinicify } from "@/lib/firebase/realtime";
 import type { Doctor, QueueState, Visit } from "@/lib/domain/types";
 
@@ -205,6 +206,8 @@ export function WaitingRoomDisplay({
       });
   }, [liveState.visits, liveState.doctors]);
 
+  const router = useRouter();
+
   return (
     <div style={{
       width: "100%",
@@ -214,7 +217,37 @@ export function WaitingRoomDisplay({
       flexDirection: "column",
       background: "#ffffff",
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
+      position: "relative",
     }}>
+      {/* ── Back Button ── */}
+      <button
+        onClick={() => router.back()}
+        style={{
+          position: "absolute",
+          top: 14,
+          left: 14,
+          zIndex: 100,
+          background: "#1565c0",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: 10,
+          padding: "8px 16px",
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          boxShadow: "0 2px 12px rgba(21,101,192,0.35)",
+          letterSpacing: "0.02em",
+          opacity: 0.85,
+          transition: "opacity 0.2s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+        onMouseLeave={e => (e.currentTarget.style.opacity = "0.85")}
+      >
+        ← Back
+      </button>
       {/* ── MAIN TOKEN BOARD ── */}
       <div style={{
         flex: 1,
