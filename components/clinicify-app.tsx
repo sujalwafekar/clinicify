@@ -14,7 +14,9 @@ import {
 } from "firebase/auth";
 import { subscribeClinicify } from "@/lib/firebase/realtime";
 import type { QueueState } from "@/lib/domain/types";
-import { AdminLive, DoctorLive, PharmacyLive, ReceptionLive } from "./live-workflows";
+import { DoctorLive, PharmacyLive, ReceptionLive } from "./live-workflows";
+import { AdminLive } from "./admin-live";
+import { WaitingRoomDisplay } from "./waiting-room-display";
 
 /* ── Constants ──────────────────────────────────── */
 const DEPARTMENTS = [
@@ -67,6 +69,7 @@ export function ClinicifyApp() {
   const [department, setDepartment] = useState<string>();
   const [state, setState] = useState<QueueState>({ doctors: [], visits: [], events: [] });
   const [authLoading, setAuthLoading] = useState(true);
+  const [showWaitingDisplay, setShowWaitingDisplay] = useState(false);
   const { toasts, push: notify, dismiss } = useToast();
 
   useEffect(() => onAuthStateChanged(firebaseAuth, async currentUser => {
@@ -104,7 +107,23 @@ export function ClinicifyApp() {
   };
 
   if (authLoading) return <LoadingScreen />;
-  if (!user || !role) return <LandingPage notify={notify} />;
+  if (!user || !role) {
+    return (
+      <>
+        <LandingPage notify={notify} onOpenWaitingDisplay={() => setShowWaitingDisplay(true)} />
+        {showWaitingDisplay && (
+          <div className="waiting-display-modal-overlay" onClick={() => setShowWaitingDisplay(false)}>
+            <div className="waiting-display-modal-content" onClick={e => e.stopPropagation()}>
+              <WaitingRoomDisplay
+                isModal={true}
+                onClose={() => setShowWaitingDisplay(false)}
+              />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   const displayName = user.email?.split("@")[0] ?? "User";
 
@@ -124,6 +143,22 @@ export function ClinicifyApp() {
           {role.charAt(0).toUpperCase() + role.slice(1)}
           {department ? ` · ${department}` : ""}
         </div>
+        <button
+          className="topbar-display-btn"
+          onClick={() => setShowWaitingDisplay(true)}
+          title="Open Waiting Room Display Board"
+        >
+          📺 Tokens Called Display
+        </button>
+        <a
+          href="/waiting-room"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="topbar-display-link"
+          title="Open Fullscreen Waiting Room TV in new tab"
+        >
+          ↗ TV Tab
+        </a>
         <div className="topbar-avatar" title={user.email ?? ""}>
           {displayName.slice(0, 2).toUpperCase()}
         </div>
@@ -136,6 +171,20 @@ export function ClinicifyApp() {
         {role === "doctor" && <DoctorLive state={state} doctorId={doctorId} callApi={callApi} notify={notify} />}
         {role === "pharmacist" && <PharmacyLive callApi={callApi} notify={notify} />}
       </main>
+
+      {/* Waiting Room TV Display Modal */}
+      {showWaitingDisplay && (
+        <div className="waiting-display-modal-overlay" onClick={() => setShowWaitingDisplay(false)}>
+          <div className="waiting-display-modal-content" onClick={e => e.stopPropagation()}>
+            <WaitingRoomDisplay
+              initialDoctors={state.doctors}
+              initialVisits={state.visits}
+              isModal={true}
+              onClose={() => setShowWaitingDisplay(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <ToastContainer toasts={toasts} dismiss={dismiss} />
     </div>
@@ -157,7 +206,7 @@ function LoadingScreen() {
 /* ── Landing Page (Split Layout) ───────────────── */
 type AuthStep = { role: Role; mode: "signin" } | null;
 
-function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]) => void }) {
+function LandingPage({ notify, onOpenWaitingDisplay }: { notify: (msg: string, type?: ToastMsg["type"]) => void; onOpenWaitingDisplay: () => void }) {
   const [authStep, setAuthStep] = useState<AuthStep>(null);
 
   const [email, setEmail] = useState("");
@@ -212,6 +261,37 @@ function LandingPage({ notify }: { notify: (msg: string, type?: ToastMsg["type"]
               <h2 className="landing-heading">Welcome to Clinicify</h2>
               <p className="landing-subheading">Select your role to securely sign in to your dashboard.</p>
 
+              {/* Public TV Screen / Waiting List Access Button */}
+              <div className="landing-tv-banner" title="Public Live Waiting Room Display">
+                <div className="landing-tv-banner-left" onClick={onOpenWaitingDisplay} style={{ cursor: "pointer", flex: 1 }}>
+                  <div className="landing-tv-banner-icon">📺</div>
+                  <div>
+                    <div className="landing-tv-banner-badge">PUBLIC WAITING ROOM MONITOR · NO LOGIN NEEDED</div>
+                    <div className="landing-tv-banner-title">View Live Waiting List / Tokens Called Screen</div>
+                    <div className="landing-tv-banner-subtitle">Real-time TV display showing called tokens and upcoming patient sequence.</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="landing-tv-banner-action"
+                    onClick={onOpenWaitingDisplay}
+                    title="View display on this page"
+                  >
+                    View Screen 📺
+                  </button>
+                  <a
+                    href="/waiting-room"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="landing-tv-banner-action"
+                    style={{ textDecoration: "none" }}
+                    title="Open standalone TV display in new tab"
+                  >
+                    ↗ New Tab
+                  </a>
+                </div>
+              </div>
               <div className="role-grid-split">
                 {(Object.entries(ROLE_META) as [Role, typeof ROLE_META[Role]][]).map(([role, meta]) => (
                   <button

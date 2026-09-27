@@ -571,7 +571,12 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
             <h1 className="page-title">Patient Queue</h1>
             <p className="page-subtitle">{queueVisits.length} patient{queueVisits.length !== 1 ? "s" : ""} currently active</p>
           </div>
-          <button className="btn btn-primary" onClick={() => { handleReset(); setView("register"); }}>+ Add New Patient</button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a href="/waiting-room" target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
+              📺 Waiting Room TV ↗
+            </a>
+            <button className="btn btn-primary" onClick={() => { handleReset(); setView("register"); }}>+ Add New Patient</button>
+          </div>
         </div>
         {queueVisits.length === 0 ? (
           <div className="no-patient-card">

@@ -7,7 +7,7 @@ import { sendNotification } from "./notifications";
 import { buildVisitConfirmationEmail, buildQueueUpdateEmail } from "./email-templates";
 import { predictDuration } from "./duration-model";
 const buffer = 2; const arrivalBuffer = 10;
-const queueId = (doctorId: string) => `H1-${new Date().toISOString().slice(0, 10)}-GM-${doctorId}`;
+const queueId = (doctorId: string) => `H1-${new Date().toISOString().slice(0, 10)}-Q-${doctorId}`;
 const eta = (minutes: number, now: number) => ({ etaLower: Timestamp.fromMillis(now + Math.max(0, minutes - uncertaintyFor(minutes)) * 60000), etaUpper: Timestamp.fromMillis(now + (minutes + uncertaintyFor(minutes)) * 60000), recommendedArrival: Timestamp.fromMillis(now + Math.max(0, minutes - uncertaintyFor(minutes) - arrivalBuffer) * 60000) });
 
 export async function getPatientsAhead(doctorId: string, visitId: string, priorityLevel: number, sequenceNumber: number) {
@@ -91,7 +91,28 @@ export async function reforecastDoctorQueue(doctorId: string, actorUid: string, 
 
 export async function createVisit(input: { patient: { name: string; age: number; mobile: string; email?: string }; doctorId: string; complaint: string; complaintCategory: ComplaintCategory; departmentId: string; isPriority?: boolean }, actorUid: string) {
   const db = adminDb(); const existing = await db.collection("patients").where("mobile", "==", input.patient.mobile).limit(1).get(); const patientRef = existing.docs[0]?.ref ?? db.collection("patients").doc(); const visitRef = db.collection("visits").doc();
-  const token = `GM-${String(Math.floor(100 + Math.random() * 900))}`;
+  // Determine Clinic number from doctor's room (e.g. "Room 3" -> 3, "Room 1" -> 1)
+  const docSnapEarly = await db.collection("doctors").doc(input.doctorId).get();
+  const docRoom = docSnapEarly.data()?.room ?? "";
+  const clinicMatch = String(docRoom).match(/\d+/);
+  const clinicNum = clinicMatch ? clinicMatch[0] : "1";
+
+  // Determine sequential token number starting from 15 (e.g. C1-15, C1-16, C1-17...)
+  const doctorVisitsSnap = await db.collection("visits").where("doctorId", "==", input.doctorId).get();
+  let maxSeq = 14;
+  doctorVisitsSnap.docs.forEach(d => {
+    const t = d.data().token;
+    if (typeof t === "string") {
+      const m = t.match(/-(\d+)$/);
+      if (m) {
+        const num = parseInt(m[1], 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    }
+  });
+  const token = `C${clinicNum}-${maxSeq + 1}`;
   const prediction = await predictDuration(input.doctorId, input.complaintCategory);
   const duration = prediction.minutes;
   const trackingKey = randomUUID();

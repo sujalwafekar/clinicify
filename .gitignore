@@ -7,4 +7,5 @@ node_modules/
 coverage/
 .vercel
 scripts/test-resend.ts
-
+.data/
+*.tsbuildinfo
