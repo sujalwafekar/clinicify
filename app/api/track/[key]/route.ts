@@ -8,15 +8,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ key: strin
   const hit = await adminDb().collection("visits").where("trackingKey", "==", key).limit(1).get();
   const visit = hit.docs[0]?.data();
   if (!visit) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  
+
   const doctor = await adminDb().collection("doctors").doc(visit.doctorId).get();
   const date = (v: { toMillis?: () => number } | undefined) => v?.toMillis?.() ?? null;
-  
+
   const ahead = await getPatientsAhead(visit.doctorId, hit.docs[0].id, visit.priorityLevel ?? 0, visit.sequenceNumber ?? 0);
-  
+
   // Get model-predicted consultation duration for this doctor + category
   const prediction = await predictDuration(visit.doctorId, visit.complaintCategory ?? "general");
-  
+
   return NextResponse.json({
     token: visit.token,
     status: visit.status,

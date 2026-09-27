@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { firestore } from "@/lib/firebase/client";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { QueueState } from "@/lib/domain/types";
 import { PriorityBadge, PriorityActionButton, PriorityConfirmationModal } from "./priority-actions";
 
@@ -30,30 +29,14 @@ const MEDICINES_STATIC = [
   { id: "m-ors", name: "ORS Sachet", stockStatus: "available" },
 ];
 
-/* ── Firestore live collection hook ─────────────── */
+/* ── Supabase live collection hook ─────────────── */
 function useRows(collectionName: string): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
-  const snapshotWorking = useRef(false);
 
   useEffect(() => {
-    // 1. Try client-side onSnapshot first
-    const q = query(collection(firestore, collectionName), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(
-      q,
-      snap => {
-        snapshotWorking.current = true;
-        setRows(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      },
-      () => {
-        // onSnapshot failed (permissions or missing index) — fall back to polling
-        snapshotWorking.current = false;
-      }
-    );
-
-    // 2. Polling fallback via server API (bypasses Firestore rules)
     let mounted = true;
+    const tableName = collectionName.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     const poll = async () => {
-      if (snapshotWorking.current) return; // onSnapshot is working, skip
       try {
         const res = await fetch(`/api/collection?name=${encodeURIComponent(collectionName)}`, { cache: "no-store" });
         if (!res.ok) return;
@@ -64,9 +47,18 @@ function useRows(collectionName: string): Row[] {
       } catch { /* ignore */ }
     };
     void poll();
-    const interval = setInterval(poll, 3000);
+    const interval = setInterval(poll, 10000);
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase
+      ?.channel(`clinicify-${tableName}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: tableName }, () => void poll())
+      .subscribe();
 
-    return () => { mounted = false; clearInterval(interval); unsub(); };
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      if (channel && supabase) void supabase.removeChannel(channel);
+    };
   }, [collectionName]);
   return rows;
 }

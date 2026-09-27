@@ -12,7 +12,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { subscribeClinicify } from "@/lib/firebase/realtime";
+import { subscribeClinicify } from "@/lib/supabase/realtime";
 import type { QueueState } from "@/lib/domain/types";
 import { DoctorLive, PharmacyLive, ReceptionLive } from "./live-workflows";
 import { AdminLive } from "./admin-live";

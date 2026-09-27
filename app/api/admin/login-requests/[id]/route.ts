@@ -11,7 +11,7 @@ export async function POST(
     await requireRole(request, ["admin"]);
     const body = await request.json();
     const { status } = body; // "approved" or "rejected"
-    
+
     if (status !== "approved" && status !== "rejected") {
       throw new Error("Invalid status");
     }

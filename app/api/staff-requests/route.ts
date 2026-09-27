@@ -19,14 +19,14 @@ export async function POST(request: NextRequest) {
     const user = await adminAuth().getUser(uid);
     const existing = await adminDb().collection("staffRequests").where("uid", "==", uid).where("status", "==", "pending").limit(1).get();
     if (!existing.empty) throw new Error("You already have a pending access request.");
-    const requestRef = await adminDb().collection("staffRequests").add({ uid, email:user.email ?? "", displayName:body.displayName?.trim() || user.displayName || "Staff applicant", role:body.role, department:body.department, staffId:body.staffId.trim(), status:"pending", createdAt:FieldValue.serverTimestamp() });
-    return NextResponse.json({ id:requestRef.id, status:"pending" });
-  } catch (error) { return NextResponse.json({ error:error instanceof Error ? error.message : "Unable to create request" }, { status:403 }); }
+    const requestRef = await adminDb().collection("staffRequests").add({ uid, email: user.email ?? "", displayName: body.displayName?.trim() || user.displayName || "Staff applicant", role: body.role, department: body.department, staffId: body.staffId.trim(), status: "pending", createdAt: FieldValue.serverTimestamp() });
+    return NextResponse.json({ id: requestRef.id, status: "pending" });
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create request" }, { status: 403 }); }
 }
 
 export async function GET(request: NextRequest) {
   try {
     await requireRole(request, ["admin"]); const snapshot = await adminDb().collection("staffRequests").orderBy("createdAt", "desc").get();
-    return NextResponse.json({ requests:snapshot.docs.map(doc=>({ id:doc.id, ...doc.data(), createdAt:doc.data().createdAt?.toMillis?.() ?? null })) });
-  } catch (error) { return NextResponse.json({ error:error instanceof Error ? error.message : "Unable to load requests" }, { status:403 }); }
+    return NextResponse.json({ requests: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), createdAt: doc.data().createdAt?.toMillis?.() ?? null })) });
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load requests" }, { status: 403 }); }
 }

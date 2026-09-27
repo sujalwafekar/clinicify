@@ -55,7 +55,8 @@ export async function transferVisit(visitId: string, destinationDoctorId: string
   await Promise.all([reforecastDoctorQueue(sourceDoctorId, actor.uid), reforecastDoctorQueue(destinationDoctorId, actor.uid)]);
 }
 export async function referVisit(visitId: string, destinationDoctorId: string, actor: { uid: string; role: Role; doctorId?: string }) {
-  const visit = await db().collection("visits").doc(visitId).get(); assert(visit.exists, "Visit not found."); assert(actor.role === "admin" || (actor.role === "doctor" && actor.doctorId === visit.data()?.doctorId), "Only the assigned doctor may refer this visit."); await transferVisit(visitId, destinationDoctorId, actor); await db().collection("queueEvents").add({ visitId, eventType:"PATIENT_REFERRED", actorUid:actor.uid, createdAt:FieldValue.serverTimestamp(), affectedQueueIds:[visit.data()?.doctorId,destinationDoctorId] }); }
+  const visit = await db().collection("visits").doc(visitId).get(); assert(visit.exists, "Visit not found."); assert(actor.role === "admin" || (actor.role === "doctor" && actor.doctorId === visit.data()?.doctorId), "Only the assigned doctor may refer this visit."); await transferVisit(visitId, destinationDoctorId, actor); await db().collection("queueEvents").add({ visitId, eventType: "PATIENT_REFERRED", actorUid: actor.uid, createdAt: FieldValue.serverTimestamp(), affectedQueueIds: [visit.data()?.doctorId, destinationDoctorId] });
+}
 
 export async function markNoShow(visitId: string, actor: { uid: string; role: Role }) {
   assert(canManageQueue(actor.role), "You cannot mark a no-show."); const ref = db().collection("visits").doc(visitId); const snapshot = await ref.get(); const doctorId = snapshot.data()?.doctorId;
@@ -70,7 +71,7 @@ export async function savePrescription(input: { visitId: string; doctorId: strin
   assert(actor.role === "admin" || (actor.role === "doctor" && actor.doctorId === input.doctorId), "Only the assigned doctor may prescribe."); assert(input.items.length > 0, "Add at least one medicine.");
   input.items.forEach(item => assert(typeof item.medicineId === "string" && typeof item.dosage === "string" && item.dosage.trim() && typeof item.frequency === "string" && item.frequency.trim() && typeof item.timing === "string" && item.timing.trim() && typeof item.duration === "string" && item.duration.trim() && Number.isInteger(item.quantity) && item.quantity > 0, "Every medicine needs dosage, frequency, timing, duration, and a positive quantity."));
   const visit = await db().collection("visits").doc(input.visitId).get(); assert(visit.exists && visit.data()?.doctorId === input.doctorId, "Visit does not belong to this doctor."); const prescriptionRef = db().collection("prescriptions").doc(); const orderRef = db().collection("pharmacyOrders").doc();
-  const medicines = await Promise.all(input.items.map(item => db().collection("medicines").doc(item.medicineId).get())); assert(medicines.every(medicine => medicine.exists && medicine.data()?.active !== false), "One or more selected medicines are unavailable."); const pricedItems = input.items.map((item,index) => ({ ...item, unitPrice: medicines[index]?.data()?.unitPrice ?? 0, stockStatus: medicines[index]?.data()?.stockStatus ?? "unknown" })); const total = pricedItems.reduce((sum,item)=>sum + item.quantity * item.unitPrice,0);
+  const medicines = await Promise.all(input.items.map(item => db().collection("medicines").doc(item.medicineId).get())); assert(medicines.every(medicine => medicine.exists && medicine.data()?.active !== false), "One or more selected medicines are unavailable."); const pricedItems = input.items.map((item, index) => ({ ...item, unitPrice: medicines[index]?.data()?.unitPrice ?? 0, stockStatus: medicines[index]?.data()?.stockStatus ?? "unknown" })); const total = pricedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const referrals = [...new Set((input.referrals ?? []).filter(value => typeof value === "string" && value.trim()))];
   const doctor = await db().collection("doctors").doc(input.doctorId).get();
   await db().runTransaction(async tx => {
@@ -92,7 +93,7 @@ export async function allocateReferral(referralId: string, doctorId: string, act
   const doctor = await db().collection("doctors").doc(doctorId).get();
   assert(doctor.exists && doctor.data()?.department === referralData.department && doctor.data()?.status !== "paused", "Choose an available doctor from the referred department.");
   const created = await createVisit({ patient: { name: referralData.patientName, age: referralData.age, mobile: referralData.mobile }, doctorId, departmentId: doctor.data()!.departmentId, complaint: `Referral from ${referralData.referringDoctorName}: ${referralData.complaintText ?? "follow-up"}`, complaintCategory: "follow_up" }, actor.uid);
-  await referralRef.update({ status:"allocated", allocatedDoctorId:doctorId, allocatedVisitId:created.visitId, allocatedBy:actor.uid, allocatedAt:FieldValue.serverTimestamp() });
+  await referralRef.update({ status: "allocated", allocatedDoctorId: doctorId, allocatedVisitId: created.visitId, allocatedBy: actor.uid, allocatedAt: FieldValue.serverTimestamp() });
   return created;
 }
 

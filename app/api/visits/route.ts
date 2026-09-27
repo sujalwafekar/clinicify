@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     // Determine appropriate status code
     const status = message === "Unauthenticated" ? 401
       : message === "Permission denied" ? 403
-      : 400;
+        : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

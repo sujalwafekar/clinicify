@@ -6,11 +6,11 @@ export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!token) throw new Error("Missing auth token.");
-    
+
     const decoded = await adminAuth().verifyIdToken(token);
     const uid = decoded.uid;
     const role = decoded.role as string;
-    
+
     if (role === "admin") {
       return NextResponse.json({ status: "approved" });
     }
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     // Wait, if they already have a "pending" one, return its ID.
     // If they have an "approved" one created in the last 24h, we could bypass?
     // The user requested: "every time this 3 types log in there should be a request go to admin"
-    
+
     // Check for existing pending request to avoid spamming
     const existingPending = await adminDb()
       .collection("loginRequests")
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       .where("status", "==", "pending")
       .limit(1)
       .get();
-      
+
     if (!existingPending.empty) {
       return NextResponse.json({ id: existingPending.docs[0].id, status: "pending" });
     }

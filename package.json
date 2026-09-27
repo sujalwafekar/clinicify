@@ -9,12 +9,15 @@
     "lint": "eslint .",
     "test": "vitest run",
     "seed": "tsx scripts/seed.ts",
+    "migrate:supabase": "tsx scripts/migrate-firestore-to-supabase.ts",
     "clear-demo": "tsx scripts/clear-demo-clinical.ts",
     "test-email": "tsx scripts/test-resend.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "@splinetool/react-spline": "^4.1.0",
     "@splinetool/runtime": "^2.0.58",
+    "@supabase/supabase-js": "2.117.2",
     "firebase": "12.4.0",
     "firebase-admin": "13.4.0",
     "lucide-react": "^1.48.0",

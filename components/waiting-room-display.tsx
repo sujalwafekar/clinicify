@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { subscribeClinicify } from "@/lib/firebase/realtime";
+import { subscribeClinicify } from "@/lib/supabase/realtime";
 import type { Doctor, QueueState, Visit } from "@/lib/domain/types";
 
 /* ── Helpers ───────────────────────────────────── */
