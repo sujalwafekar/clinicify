@@ -1066,7 +1066,7 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
       <div className="no-patient-card">
         <div className="no-patient-icon">🩺</div>
         <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Profile Pending Approval</div>
-        <p style={{ color: "var(--muted)" }}>Your doctor profile is awaiting admin approval or room assignment.</p>
+        <p style={{ color: "var(--muted)" }}>Your doctor profile is ready. An administrator can assign your consultation room when needed.</p>
       </div>
     );
   }

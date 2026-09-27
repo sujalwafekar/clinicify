@@ -19,8 +19,17 @@ export async function POST(request: NextRequest) {
     const user = await adminAuth().getUser(uid);
     const existing = await adminDb().collection("staffRequests").where("uid", "==", uid).where("status", "==", "pending").limit(1).get();
     if (!existing.empty) throw new Error("You already have a pending access request.");
-    const requestRef = await adminDb().collection("staffRequests").add({ uid, email: user.email ?? "", displayName: body.displayName?.trim() || user.displayName || "Staff applicant", role: body.role, department: body.department, staffId: body.staffId.trim(), status: "pending", createdAt: FieldValue.serverTimestamp() });
-    return NextResponse.json({ id: requestRef.id, status: "pending" });
+    const isDoctor = body.role === "doctor";
+    const requestRef = await adminDb().collection("staffRequests").add({ uid, email: user.email ?? "", displayName: body.displayName?.trim() || user.displayName || "Staff applicant", role: body.role, department: body.department, staffId: body.staffId.trim(), status: isDoctor ? "approved" : "pending", autoApproved: isDoctor, createdAt: FieldValue.serverTimestamp(), ...(isDoctor ? { reviewedAt: FieldValue.serverTimestamp(), reviewedBy: "system:auto-approve-doctor" } : {}) });
+
+    if (isDoctor) {
+      const doctorId = `doctor-${uid}`;
+      await adminAuth().setCustomUserClaims(uid, { role: "doctor", hospitalId: "H1", department: body.department, doctorId });
+      await adminDb().collection("users").doc(uid).set({ uid, email: user.email ?? "", displayName: body.displayName?.trim() || user.displayName || "Doctor", role: "doctor", department: body.department, staffId: body.staffId.trim(), doctorId, hospitalId: "H1", active: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await adminDb().collection("doctors").doc(doctorId).set({ name: body.displayName?.trim() || user.displayName || "Doctor", department: body.department, departmentId: body.department.toLowerCase().replaceAll(" ", "-"), room: "Unassigned", status: "available", hospitalId: "H1", currentVisitId: null, averageDuration: 8, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+
+    return NextResponse.json({ id: requestRef.id, status: isDoctor ? "approved" : "pending", autoApproved: isDoctor });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create request" }, { status: 403 }); }
 }
 

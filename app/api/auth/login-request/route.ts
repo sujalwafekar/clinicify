@@ -15,6 +15,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "approved" });
     }
 
+    // Doctors are auto-approved after onboarding. Receptionists and
+    // pharmacists continue through the admin login approval queue.
+    if (role === "doctor") {
+      return NextResponse.json({ status: "approved", autoApproved: true });
+    }
+
     const user = await adminAuth().getUser(uid);
 
     // Check if there's already a pending or approved login request for today?
