@@ -303,41 +303,6 @@ export function WaitingRoomDisplay({
         </div>
       </div>
 
-      {/* ── SECONDARY SECTION: UPCOMING WAITING SEQUENCE TICKER ── */}
-      <div className="waiting-sequence-container">
-        <div className="waiting-sequence-header">
-          <div className="seq-title">
-            <span className="seq-icon">⏳</span>
-            <span>UPCOMING PATIENTS SEQUENCE ({waitingSequence.length} WAITING)</span>
-          </div>
-          <div className="seq-hint">Tokens will be called in this order</div>
-        </div>
-
-        {waitingSequence.length === 0 ? (
-          <div className="waiting-sequence-empty">
-            ✅ No patients currently waiting in queue. As receptionist registers patients, their sequential tokens will appear here.
-          </div>
-        ) : (
-          <div className="waiting-sequence-cards-strip">
-            {waitingSequence.map((item, idx) => (
-              <div key={item.visit.id} className={`seq-card ${idx === 0 ? "seq-card-next" : ""}`}>
-                <div className="seq-card-badge">
-                  {idx === 0 ? "⚡ NEXT IN LINE" : `#${item.seqNumber}`}
-                </div>
-                <div className="seq-card-token-row">
-                  <span className="seq-token-number">{item.tokenSeq}</span>
-                  <span className="seq-clinic-tag">Clinic {item.clinicNum}</span>
-                </div>
-                <div className="seq-patient-name">{item.visit.patientName}</div>
-                <div className="seq-card-meta">
-                  <span>{item.department}</span>
-                  <span>· {fmtTime(item.visit.etaLower)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* ── FOOTER INFORMATION STRIP ── */}
       <div className="tv-footer-ticker">

@@ -236,7 +236,30 @@ function LandingPage({ notify, onOpenWaitingDisplay }: { notify: (msg: string, t
   };
 
   return (
-    <div className="landing-split">
+    <div className="landing-split" style={{ position: "relative" }}>
+      <button 
+        onClick={onOpenWaitingDisplay}
+        title="Open Live TV Monitor"
+        style={{
+          position: "absolute",
+          top: "24px",
+          right: "24px",
+          background: "rgba(255, 255, 255, 0.95)",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+          borderRadius: "8px",
+          padding: "10px 16px",
+          fontWeight: 600,
+          color: "#0f172a",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+          zIndex: 50
+        }}
+      >
+        📺 View Live Screen
+      </button>
       {/* Left Branding Side */}
       <div className="landing-left">
         <div className="landing-left-content">
@@ -261,37 +284,7 @@ function LandingPage({ notify, onOpenWaitingDisplay }: { notify: (msg: string, t
               <h2 className="landing-heading">Welcome to Clinicify</h2>
               <p className="landing-subheading">Select your role to securely sign in to your dashboard.</p>
 
-              {/* Public TV Screen / Waiting List Access Button */}
-              <div className="landing-tv-banner" title="Public Live Waiting Room Display">
-                <div className="landing-tv-banner-left" onClick={onOpenWaitingDisplay} style={{ cursor: "pointer", flex: 1 }}>
-                  <div className="landing-tv-banner-icon">📺</div>
-                  <div>
-                    <div className="landing-tv-banner-badge">PUBLIC WAITING ROOM MONITOR · NO LOGIN NEEDED</div>
-                    <div className="landing-tv-banner-title">View Live Waiting List / Tokens Called Screen</div>
-                    <div className="landing-tv-banner-subtitle">Real-time TV display showing called tokens and upcoming patient sequence.</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    className="landing-tv-banner-action"
-                    onClick={onOpenWaitingDisplay}
-                    title="View display on this page"
-                  >
-                    View Screen 📺
-                  </button>
-                  <a
-                    href="/waiting-room"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="landing-tv-banner-action"
-                    style={{ textDecoration: "none" }}
-                    title="Open standalone TV display in new tab"
-                  >
-                    ↗ New Tab
-                  </a>
-                </div>
-              </div>
+
               <div className="role-grid-split">
                 {(Object.entries(ROLE_META) as [Role, typeof ROLE_META[Role]][]).map(([role, meta]) => (
                   <button
