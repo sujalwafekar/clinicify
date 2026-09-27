@@ -206,109 +206,133 @@ export function WaitingRoomDisplay({
   }, [liveState.visits, liveState.doctors]);
 
   return (
-    <div className={`waiting-room-tv-screen ${isModal ? "modal-mode" : ""}`}>
-      {/* ── TOP UTILITY STRIP ── */}
-      <div className="tv-utility-strip">
-        <div className="tv-brand">
-          <span className="tv-brand-icon">✚</span>
-          <span>CLINICIFY OPD · WAITING ROOM QUEUE MONITOR</span>
-        </div>
-        <div className="tv-meta-controls">
-          <div className="tv-live-pill">
-            <span className="tv-pulse-dot" />
-            LIVE DATABASE
-          </div>
-          <div className="tv-clock">{currentTime}</div>
-          <button
-            className="tv-icon-btn"
-            title={soundEnabled ? "Mute Chime" : "Enable Chime"}
-            onClick={() => setSoundEnabled(!soundEnabled)}
-          >
-            {soundEnabled ? "🔔" : "🔕"}
-          </button>
-          {!isModal && (
-            <button className="tv-icon-btn" title="Toggle Fullscreen" onClick={toggleFullscreen}>
-              {isFullscreen ? "🗗" : "⛶"}
-            </button>
-          )}
-          {isModal && onClose && (
-            <button className="tv-close-btn" onClick={onClose} title="Close Display">
-              ✕
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── MAIN DISPLAY BOARD: EXACT REPLICA OF USER PHOTO ── */}
-      <div className="tokens-called-board">
-        {/* Main Blue Banner */}
-        <div className="tokens-called-banner">
-          <h1>TOKENS CALLED</h1>
+    <div style={{
+      width: "100%",
+      height: "100%",
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      background: "#ffffff",
+      fontFamily: "'Inter', 'Segoe UI', sans-serif",
+    }}>
+      {/* ── MAIN TOKEN BOARD ── */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        {/* Banner */}
+        <div style={{
+          background: "#1565c0",
+          color: "#ffffff",
+          textAlign: "center",
+          padding: "18px 24px",
+          fontSize: "clamp(18px, 3vw, 32px)",
+          fontWeight: 800,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          flexShrink: 0,
+        }}>
+          TOKENS CALLED
         </div>
 
-        {/* 4-Column Table Header: TOKEN | CLINIC | TOKEN | CLINIC */}
-        <div className="tokens-grid-header">
-          <div className="th-cell th-token">TOKEN</div>
-          <div className="th-cell th-clinic">CLINIC</div>
-          <div className="th-divider-col" />
-          <div className="th-cell th-token">TOKEN</div>
-          <div className="th-cell th-clinic">CLINIC</div>
+        {/* 4-Column Header: TOKEN | CLINIC | TOKEN | CLINIC */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 4px 1fr 1fr",
+          background: "#1976d2",
+          color: "#ffffff",
+          fontWeight: 700,
+          fontSize: "clamp(13px, 2vw, 22px)",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          flexShrink: 0,
+        }}>
+          <div style={{ padding: "12px 16px", textAlign: "center" }}>TOKEN</div>
+          <div style={{ padding: "12px 16px", textAlign: "center" }}>CLINIC</div>
+          <div style={{ background: "#1565c0" }} />
+          <div style={{ padding: "12px 16px", textAlign: "center" }}>TOKEN</div>
+          <div style={{ padding: "12px 16px", textAlign: "center" }}>CLINIC</div>
         </div>
 
-        {/* Alternating Data Rows */}
-        <div className="tokens-grid-body">
+        {/* Rows */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {loading && clinics.length === 0 ? (
-            <div className="tokens-empty-row">
-              <span className="btn-spinner dark" style={{ marginRight: 10 }} />
-              Connecting to live hospital database…
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#1565c0", fontSize: 22, gap: 12 }}>
+              <span className="btn-spinner dark" />
+              Connecting to live database…
             </div>
           ) : pairedRows.length === 0 ? (
-            <div className="tokens-empty-row">No consultation rooms currently registered in hospital.</div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#555", fontSize: 22 }}>
+              No consultation rooms currently active.
+            </div>
           ) : (
             pairedRows.map((pair, idx) => (
-              <div key={idx} className={`tokens-grid-row ${idx % 2 === 0 ? "row-even" : "row-odd"}`}>
-                {/* Left Clinic Pair */}
-                <div className="td-cell td-token">
-                  <span className={`token-digits ${pair.left.tokenSeq !== "—" ? "active-token" : ""}`}>
-                    {pair.left.tokenSeq}
-                  </span>
+              <div
+                key={idx}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 4px 1fr 1fr",
+                  flex: 1,
+                  background: idx % 2 === 0 ? "#e3f2fd" : "#bbdefb",
+                  borderBottom: "1px solid #90caf9",
+                  minHeight: 0,
+                }}
+              >
+                {/* Left Token */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{
+                    fontSize: "clamp(28px, 6vw, 80px)",
+                    fontWeight: 900,
+                    color: pair.left.tokenSeq !== "—" ? "#0d47a1" : "#90caf9",
+                    letterSpacing: "0.04em",
+                  }}>{pair.left.tokenSeq}</span>
                 </div>
-                <div className="td-cell td-clinic">
-                  <span className="clinic-digits">{pair.left.clinicNum}</span>
+                {/* Left Clinic */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{
+                    fontSize: "clamp(32px, 7vw, 96px)",
+                    fontWeight: 900,
+                    color: "#1565c0",
+                  }}>{pair.left.clinicNum}</span>
                 </div>
 
-                <div className="td-divider-col" />
+                {/* Divider */}
+                <div style={{ background: "#1565c0" }} />
 
-                {/* Right Clinic Pair */}
+                {/* Right Token */}
                 {pair.right ? (
                   <>
-                    <div className="td-cell td-token">
-                      <span className={`token-digits ${pair.right.tokenSeq !== "—" ? "active-token" : ""}`}>
-                        {pair.right.tokenSeq}
-                      </span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{
+                        fontSize: "clamp(28px, 6vw, 80px)",
+                        fontWeight: 900,
+                        color: pair.right.tokenSeq !== "—" ? "#0d47a1" : "#90caf9",
+                        letterSpacing: "0.04em",
+                      }}>{pair.right.tokenSeq}</span>
                     </div>
-                    <div className="td-cell td-clinic">
-                      <span className="clinic-digits">{pair.right.clinicNum}</span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{
+                        fontSize: "clamp(32px, 7vw, 96px)",
+                        fontWeight: 900,
+                        color: "#1565c0",
+                      }}>{pair.right.clinicNum}</span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="td-cell td-token"><span className="token-digits">—</span></div>
-                    <div className="td-cell td-clinic"><span className="clinic-digits">—</span></div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontSize: "clamp(28px, 6vw, 80px)", fontWeight: 900, color: "#90caf9" }}>—</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontSize: "clamp(32px, 7vw, 96px)", fontWeight: 900, color: "#90caf9" }}>—</span>
+                    </div>
                   </>
                 )}
               </div>
             ))
           )}
-        </div>
-      </div>
-
-
-      {/* ── FOOTER INFORMATION STRIP ── */}
-      <div className="tv-footer-ticker">
-        <div className="ticker-label">NOTICE:</div>
-        <div className="ticker-text">
-          Please proceed to your assigned clinic room when your token number is displayed above. All tokens follow a sequential numbering system.
         </div>
       </div>
     </div>
