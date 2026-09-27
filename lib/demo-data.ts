@@ -4,8 +4,7 @@ const now = Date.now();
 export const initialState: QueueState = reforecastDoctorQueue(reforecastDoctorQueue({
   doctors: [
     { id: "d-mehta", name: "Dr. Ananya Mehta", department: "General Medicine", room: "Room 3", status: "busy", currentVisitId: "v-current", averageDuration: 9 },
-    { id: "d-iyer", name: "Dr. Rohan Iyer", department: "General Medicine", room: "Room 4", status: "available", averageDuration: 8 },
-    { id: "d-shah", name: "Dr. Neel Shah", department: "Orthopedics", room: "Room 7", status: "paused", averageDuration: 13 }
+    { id: "d-iyer", name: "Dr. Rohan Iyer", department: "General Medicine", room: "Room 4", status: "available", averageDuration: 8 }
   ],
   visits: [
     { id: "v-current", patientId: "p-001", patientName: "Aarav Sharma", age: 39, token: "C3-15", doctorId: "d-mehta", complaint: "Fever and fatigue", complaintCategory: "fever", priorityLevel: 0, sequenceNumber: 0, status: "in_consultation", predictedDuration: 8, consultationStartedAt: now - 3 * 60000 },
