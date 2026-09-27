@@ -3,6 +3,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { createVisit, reforecastDoctorQueue } from "@/lib/server/queue-service";
 import type { Role } from "@/lib/domain/types";
 import { sendNotification } from "@/lib/server/notifications";
+import { buildPrescriptionAvailableEmail, buildPharmacyReadyEmail } from "@/lib/server/email-templates";
+import { invalidateDoctorCache } from "@/lib/server/duration-model";
 
 const db = () => adminDb();
 function assert(condition: unknown, message: string): void { if (!condition) throw new Error(message); }
@@ -42,6 +44,7 @@ export async function completeConsultation(visitId: string, doctorId: string, ac
   assert(visit.exists && data?.status === "in_consultation", "Visit is not currently in consultation.");
   const started = data?.consultationStartedAt?.toMillis?.() ?? Date.now(); const actualDurationMin = Math.max(1, Math.round((Date.now() - started) / 60000)); const predictionErrorMin = Math.round((Date.now() - (data?.predictedStartAt?.toMillis?.() ?? Date.now())) / 60000);
   await db().runTransaction(async tx => { tx.update(visitRef, { status: "completed", consultationEndedAt: FieldValue.serverTimestamp(), actualDurationMin, predictionErrorMin }); tx.set(db().collection("doctors").doc(resolvedDoctorId), { status: "available", currentVisitId: null }, { merge: true }); tx.set(db().collection("queueEvents").doc(), { visitId, eventType: "CONSULTATION_ENDED", actorUid: actor.uid, createdAt: FieldValue.serverTimestamp(), metadata: { actualDurationMin, predictionErrorMin }, affectedQueueIds: [resolvedDoctorId] }); });
+  invalidateDoctorCache(resolvedDoctorId);
   await reforecastDoctorQueue(resolvedDoctorId, actor.uid);
 }
 
@@ -73,10 +76,11 @@ export async function savePrescription(input: { visitId: string; doctorId: strin
   await db().runTransaction(async tx => {
     tx.set(prescriptionRef, { ...input, referrals, items: pricedItems, patientId: visit.data()!.patientId, patientName: visit.data()!.patientName, token: visit.data()!.token, doctorName: doctor.data()?.name ?? "Doctor", createdAt: FieldValue.serverTimestamp(), status: "saved" });
     tx.set(orderRef, { prescriptionId: prescriptionRef.id, visitId: input.visitId, patientId: visit.data()!.patientId, patientName: visit.data()!.patientName, token: visit.data()!.token, doctorId: input.doctorId, doctorName: doctor.data()?.name ?? "Doctor", referrals, notes: input.notes ?? "", items: pricedItems, status: "received", createdAt: FieldValue.serverTimestamp(), receivedAt: FieldValue.serverTimestamp(), billingStatus: "pending", total });
-    referrals.forEach(department => tx.set(db().collection("referralRequests").doc(), { prescriptionId: prescriptionRef.id, originVisitId: input.visitId, patientId: visit.data()!.patientId, patientName: visit.data()!.patientName, age: visit.data()!.age, mobile: visit.data()!.mobile, bodyTemperature: visit.data()!.bodyTemperature ?? null, temperatureUnit: visit.data()!.temperatureUnit ?? null, weightKg: visit.data()!.weightKg ?? null, complaintText: visit.data()!.complaintText, referringDoctorId: input.doctorId, referringDoctorName: doctor.data()?.name ?? "Doctor", department, status: "pending_allocation", createdAt: FieldValue.serverTimestamp() }));
+    referrals.forEach(department => tx.set(db().collection("referralRequests").doc(), { prescriptionId: prescriptionRef.id, originVisitId: input.visitId, patientId: visit.data()!.patientId, patientName: visit.data()!.patientName, age: visit.data()!.age, mobile: visit.data()!.mobile, complaintText: visit.data()!.complaintText, referringDoctorId: input.doctorId, referringDoctorName: doctor.data()?.name ?? "Doctor", department, status: "pending_allocation", createdAt: FieldValue.serverTimestamp() }));
     tx.set(db().collection("queueEvents").doc(), { visitId: input.visitId, eventType: "PRESCRIPTION_SAVED", actorUid: actor.uid, createdAt: FieldValue.serverTimestamp(), affectedQueueIds: [] });
   });
-  await sendNotification({ visitId: input.visitId, recipient: visit.data()?.email, type: "PRESCRIPTION_AVAILABLE", subject: "Your Clinicify prescription is available", html: "<p>Your prescription is ready for pharmacy fulfillment. View your secure tracking link for details.</p>" }); return { prescriptionId: prescriptionRef.id, orderId: orderRef.id };
+  const trackingUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/track/${visit.data()?.trackingKey}`;
+  await sendNotification({ visitId: input.visitId, recipient: visit.data()?.email, type: "PRESCRIPTION_AVAILABLE", subject: "Your Clinicify prescription is available", html: buildPrescriptionAvailableEmail({ trackingUrl }) }); return { prescriptionId: prescriptionRef.id, orderId: orderRef.id };
 }
 
 export async function allocateReferral(referralId: string, doctorId: string, actor: { uid: string; role: Role; department?: string }) {
@@ -87,7 +91,7 @@ export async function allocateReferral(referralId: string, doctorId: string, act
   assert(actor.role === "admin" || actor.department === referralData.department, "This referral belongs to another department.");
   const doctor = await db().collection("doctors").doc(doctorId).get();
   assert(doctor.exists && doctor.data()?.department === referralData.department && doctor.data()?.status !== "paused", "Choose an available doctor from the referred department.");
-  const created = await createVisit({ patient: { name:referralData.patientName, age:referralData.age, mobile:referralData.mobile, bodyTemperature:referralData.bodyTemperature ?? undefined, temperatureUnit:referralData.temperatureUnit ?? undefined, weightKg:referralData.weightKg ?? undefined }, doctorId, departmentId:doctor.data()!.departmentId, complaint:`Referral from ${referralData.referringDoctorName}: ${referralData.complaintText ?? "follow-up"}`, complaintCategory:"follow_up" }, actor.uid);
+  const created = await createVisit({ patient: { name: referralData.patientName, age: referralData.age, mobile: referralData.mobile }, doctorId, departmentId: doctor.data()!.departmentId, complaint: `Referral from ${referralData.referringDoctorName}: ${referralData.complaintText ?? "follow-up"}`, complaintCategory: "follow_up" }, actor.uid);
   await referralRef.update({ status:"allocated", allocatedDoctorId:doctorId, allocatedVisitId:created.visitId, allocatedBy:actor.uid, allocatedAt:FieldValue.serverTimestamp() });
   return created;
 }
@@ -95,7 +99,7 @@ export async function allocateReferral(referralId: string, doctorId: string, act
 const pharmacyStates = ["received", "preparing", "ready", "dispensed"];
 export async function updatePharmacyStatus(orderId: string, status: string, actor: { uid: string; role: Role }) {
   assert(["pharmacist", "admin"].includes(actor.role), "Only pharmacy staff may update fulfillment."); assert(pharmacyStates.includes(status), "Invalid pharmacy status."); const ref = db().collection("pharmacyOrders").doc(orderId); const order = await ref.get(); assert(order.exists, "Pharmacy order not found."); const timestamps: Record<string, unknown> = { status, updatedAt: FieldValue.serverTimestamp() }; if (status === "ready") timestamps.readyAt = FieldValue.serverTimestamp(); if (status === "dispensed") timestamps.dispensedAt = FieldValue.serverTimestamp(); await ref.update(timestamps);
-  if (status === "ready") { const visit = await db().collection("visits").doc(order.data()!.visitId).get(); await sendNotification({ visitId: order.data()!.visitId, recipient: visit.data()?.email, type: "PHARMACY_READY", subject: "Your Clinicify pharmacy order is ready", html: "<p>Your pharmacy order is ready for collection.</p>" }); }
+  if (status === "ready") { const visit = await db().collection("visits").doc(order.data()!.visitId).get(); const trackingUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/track/${visit.data()?.trackingKey}`; await sendNotification({ visitId: order.data()!.visitId, recipient: visit.data()?.email, type: "PHARMACY_READY", subject: "Your Clinicify pharmacy order is ready", html: buildPharmacyReadyEmail({ trackingUrl }) }); }
 }
 
 export async function adjustInventory(medicineId: string, delta: number, actor: { uid: string; role: Role }) { assert(["pharmacist", "admin"].includes(actor.role), "Only pharmacy staff may adjust inventory."); const ref = db().collection("medicines").doc(medicineId); await db().runTransaction(async tx => { const current = await tx.get(ref); assert(current.exists, "Medicine not found."); const data = current.data()!; const stockQuantity = Math.max(0, (data.stockQuantity ?? 0) + delta); const stockStatus = stockQuantity === 0 ? "out_of_stock" : stockQuantity <= data.lowStockThreshold ? "low_stock" : "available"; tx.update(ref, { stockQuantity, stockStatus, updatedAt: FieldValue.serverTimestamp() }); tx.set(db().collection("queueEvents").doc(), { eventType: "INVENTORY_ADJUSTED", actorUid: actor.uid, createdAt: FieldValue.serverTimestamp(), metadata: { medicineId, delta, stockQuantity }, affectedQueueIds: [] }); }); }

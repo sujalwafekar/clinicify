@@ -28,14 +28,24 @@ export async function sendNotification(input: {
     return;
   }
 
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    console.warn("[Notifications] RESEND_API_KEY is missing. Skipping email.");
+    await record.update({ status: "skipped", reason: "RESEND_API_KEY missing" });
+    return;
+  }
+
+  const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || "Clinicify <onboarding@resend.dev>";
+
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resend = new Resend(apiKey);
     const result = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL!,
+      from: fromEmail,
       to: input.recipient,
       subject: input.subject,
       html: input.html,
     });
+    console.log("[Notifications] Resend send response:", result);
     await record.update({
       status: result.error ? "failed" : "sent",
       providerId: result.data?.id ?? null,
@@ -43,6 +53,7 @@ export async function sendNotification(input: {
       sentAt: new Date(),
     });
   } catch (error) {
+    console.error("[Notifications] Resend delivery error:", error);
     await record.update({
       status: "failed",
       error: error instanceof Error ? error.message : "Unknown delivery error",

@@ -4,9 +4,10 @@ import { requireRole } from "@/lib/server/authorization";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     await requireRole(request, ["admin"]);
     const body = await request.json();
     const { status } = body; // "approved" or "rejected"
@@ -15,7 +16,7 @@ export async function POST(
       throw new Error("Invalid status");
     }
 
-    await adminDb().collection("loginRequests").doc(params.id).update({ status });
+    await adminDb().collection("loginRequests").doc(id).update({ status });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(

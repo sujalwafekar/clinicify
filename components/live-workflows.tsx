@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { firestore } from "@/lib/firebase/client";
 import type { QueueState } from "@/lib/domain/types";
+import { PriorityBadge, PriorityActionButton, PriorityConfirmationModal } from "./priority-actions";
 
 /* ── Shared types ─────────────────────────────── */
 type Call = (path: string, body?: unknown) => Promise<unknown>;
@@ -297,110 +298,270 @@ export function AdminLive({ state, callApi, notify }: { state: QueueState; callA
    RECEPTION LIVE
    ════════════════════════════════════════════════ */
 
-// Departments with emoji icons
+// Departments list
 const DEPT_LIST = [
-  { key: "General Medicine",  label: "General Medicine",  icon: "🏥", desc: "General OPD, fever, cough, cold"         },
-  { key: "ENT",               label: "ENT (Ear/Nose/Throat)", icon: "👂", desc: "Ear pain, sinusitis, throat problems" },
-  { key: "Ophthalmology",     label: "Ophthalmology (Eyes)",  icon: "👁️", desc: "Eye pain, vision issues, infection"  },
-  { key: "Dentistry",         label: "Dentistry (Teeth)",     icon: "🦷", desc: "Tooth pain, cavity, gum issues"      },
-  { key: "Neurology",         label: "Neurology",             icon: "🧠", desc: "Headache, seizures, nerve issues"    },
-  { key: "Cardiology",        label: "Cardiology (Heart)",    icon: "❤️", desc: "Chest pain, BP, heart concerns"      },
-  { key: "Radiology",         label: "Radiology (Imaging)",   icon: "🩻", desc: "X-ray, MRI, CT scan requests"       },
-  { key: "Orthopedics",       label: "Orthopedics (Bones)",   icon: "🦴", desc: "Joint pain, fractures, sports injury"},
-  { key: "Gynecology",        label: "Gynecology",            icon: "🌸", desc: "Women's health, OB/GYN"             },
-  { key: "Pediatrics",        label: "Pediatrics (Children)", icon: "👶", desc: "Child health, vaccination, growth"   },
-  { key: "Dermatology",       label: "Dermatology (Skin)",    icon: "🧴", desc: "Skin rash, acne, allergy, infection" },
-  { key: "Psychiatry",        label: "Psychiatry (Mental)",   icon: "🧘", desc: "Mental health, anxiety, counseling"  },
+  { key: "General Medicine", label: "General Medicine", desc: "General OPD, fever, cough, cold" },
+  { key: "ENT",              label: "ENT",              desc: "Ear pain, sinusitis, throat problems" },
+  { key: "Ophthalmology",    label: "Ophthalmology",    desc: "Eye pain, vision issues, infection" },
+  { key: "Dentistry",        label: "Dentistry",        desc: "Tooth pain, cavity, gum issues" },
+  { key: "Neurology",        label: "Neurology",        desc: "Headache, seizures, nerve issues" },
+  { key: "Cardiology",       label: "Cardiology",       desc: "Chest pain, BP, heart concerns" },
+  { key: "Radiology",        label: "Radiology",        desc: "X-ray, MRI, CT scan requests" },
+  { key: "Orthopedics",      label: "Orthopedics",      desc: "Joint pain, fractures, sports injury" },
+  { key: "Gynecology",       label: "Gynecology",       desc: "Women's health, OB/GYN" },
+  { key: "Pediatrics",       label: "Pediatrics",       desc: "Child health, vaccination, growth" },
+  { key: "Dermatology",      label: "Dermatology",      desc: "Skin rash, acne, allergy, infection" },
+  { key: "Psychiatry",       label: "Psychiatry",       desc: "Mental health, anxiety, counseling" },
 ];
 
-type PatientForm = {
-  name: string; age: string; mobile: string;
-  temp: string; unit: "F" | "C"; weight: string; remark: string;
+const COMPLAINT_CATEGORIES = [
+  { value: "general",   label: "General" },
+  { value: "fever",     label: "Fever" },
+  { value: "headache",  label: "Headache" },
+  { value: "injury",    label: "Injury" },
+  { value: "follow_up", label: "Follow-up" },
+] as const;
+
+const fmtTime = (ms: number | null | undefined) => {
+  if (!ms) return null;
+  return new Date(ms).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 };
+
+type RegForm = {
+  name: string; age: string; mobile: string; email: string;
+  complaint: string; complaintCategory: string; department: string; isPriority: boolean;
+};
+type FormErrors = Partial<Record<keyof RegForm, string>>;
+type RegistrationResult = { token: string; trackingUrl: string; etaLower: number | null; etaUpper: number | null; recommendedArrival: number | null; doctorName: string; doctorRoom: string; emailSent: boolean };
+
+type PatientMatch = {
+  id?: string;
+  name: string;
+  mobile: string;
+  age?: number | string;
+  email?: string;
+  gender?: string;
+  hospitalPatientNumber?: string;
+  lastVisitComplaint?: string;
+};
+
+const DEMO_PATIENT_RECORDS: PatientMatch[] = [
+  { id: "p-001", name: "Aarav Sharma", mobile: "9820123456", age: 39, gender: "Male", hospitalPatientNumber: "UHID-2024-001", lastVisitComplaint: "Fever and fatigue" },
+  { id: "p-002", name: "Meera Joshi", mobile: "9819876543", age: 28, gender: "Female", hospitalPatientNumber: "UHID-2024-002", lastVisitComplaint: "Persistent headache" },
+  { id: "p-003", name: "Rahul Verma", mobile: "9876543210", age: 52, gender: "Male", hospitalPatientNumber: "UHID-2024-003", lastVisitComplaint: "Follow-up consultation" },
+  { id: "p-004", name: "Ishita Rao", mobile: "9823456789", age: 34, gender: "Female", hospitalPatientNumber: "UHID-2024-004", lastVisitComplaint: "General consultation" },
+  { id: "p-005", name: "Kabir Khan", mobile: "9834567890", age: 42, gender: "Male", hospitalPatientNumber: "UHID-2024-005", lastVisitComplaint: "Fever" },
+  { id: "p-006", name: "Nisha Patel", mobile: "9845678901", age: 31, gender: "Female", hospitalPatientNumber: "UHID-2024-006", lastVisitComplaint: "General consultation" }
+];
 
 export function ReceptionLive({ state, department: receptionDept, callApi, notify }: {
   state: QueueState; department?: string; callApi: Call; notify: NotifyFn;
 }) {
-  const [form, setForm] = useState<PatientForm>({ name: "", age: "", mobile: "", temp: "", unit: "F", weight: "", remark: "" });
-  const [selectedDept, setSelectedDept] = useState<string>("");
-  const [saved, setSaved] = useState(false);
-  const [token, setToken] = useState("");
+  const EMPTY_FORM: RegForm = { name: "", age: "", mobile: "", email: "", complaint: "", complaintCategory: "general", department: receptionDept ?? "", isPriority: false };
+  const [form, setForm] = useState<RegForm>(EMPTY_FORM);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [choosingBusy, setChoosingBusy] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [result, setResult] = useState<RegistrationResult | null>(null);
   const [view, setView] = useState<"register" | "queue">("register");
+
+  // Single-phone unified autofill state
+  const [matchingPatients, setMatchingPatients] = useState<PatientMatch[]>([]);
+  const [isSearchingPhone, setIsSearchingPhone] = useState(false);
+  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<PatientMatch | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const phoneWrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (phoneWrapperRef.current && !phoneWrapperRef.current.contains(e.target as Node)) {
+        setShowPhoneDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const referrals = useRows("referralRequests");
 
-  // If the receptionist's own department is set, pre-filter. Otherwise let them pick.
-  const effectiveDept = receptionDept ?? selectedDept;
-
-  // Doctors matching the selected department
-  const filteredDoctors = effectiveDept
-    ? state.doctors.filter(d => d.department === effectiveDept)
-    : state.doctors;
-
-  // All visits that are waiting or in_consultation (the live queue)
+  const effectiveDept = receptionDept ?? form.department;
+  const filteredDoctors = effectiveDept ? state.doctors.filter(d => d.department === effectiveDept) : state.doctors;
   const queueVisits = state.visits.filter(v => v.status === "waiting" || v.status === "in_consultation");
 
-  const ch = (k: keyof PatientForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const ch = (k: keyof RegForm, v: string) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: undefined })); setSaved(false); };
+
+  const handleMobileChange = (val: string) => {
+    ch("mobile", val);
+    if (selectedPatient && val !== selectedPatient.mobile) {
+      setSelectedPatient(null);
+    }
+
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    const clean = val.trim();
+    const digits = clean.replace(/\D/g, "");
+
+    if (digits.length < 3 && clean.length < 3) {
+      setMatchingPatients([]);
+      setShowPhoneDropdown(false);
+      setIsSearchingPhone(false);
+      return;
+    }
+
+    setIsSearchingPhone(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const localMatches: PatientMatch[] = [];
+        const seen = new Set<string>();
+
+        const addMatch = (p: PatientMatch) => {
+          const key = (p.mobile || p.name).toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            localMatches.push(p);
+          }
+        };
+
+        // 1. Match against DEMO_PATIENT_RECORDS
+        for (const demo of DEMO_PATIENT_RECORDS) {
+          if (demo.mobile.includes(digits) || (digits.length >= 4 && demo.mobile.replace(/\D/g, "").includes(digits))) {
+            addMatch(demo);
+          }
+        }
+
+        // 2. Match against active queue visits
+        for (const v of state.visits) {
+          const vMobile = v.mobile ?? "";
+          if (vMobile && (vMobile.includes(digits) || vMobile.replace(/\D/g, "").includes(digits))) {
+            addMatch({
+              name: v.patientName,
+              mobile: vMobile,
+              age: v.age,
+              lastVisitComplaint: v.complaint
+            });
+          }
+        }
+
+        // 3. Query remote API
+        try {
+          const res = await callApi(`/api/patients/lookup?q=${encodeURIComponent(clean)}`) as {
+            patient?: Record<string, unknown> | null;
+            patients?: Array<Record<string, unknown>>;
+          };
+          const remoteList = (res?.patients && res.patients.length > 0)
+            ? res.patients
+            : (res?.patient ? [res.patient] : []);
+
+          for (const item of remoteList) {
+            if (item && item.name && item.mobile) {
+              addMatch({
+                id: item.id as string | undefined,
+                name: String(item.name),
+                mobile: String(item.mobile),
+                age: item.age ? Number(item.age) : undefined,
+                email: item.email ? String(item.email) : undefined,
+                hospitalPatientNumber: item.hospitalPatientNumber ? String(item.hospitalPatientNumber) : undefined
+              });
+            }
+          }
+        } catch {
+          // Keep localMatches if API has an error
+        }
+
+        setMatchingPatients(localMatches);
+        setShowPhoneDropdown(localMatches.length > 0);
+      } finally {
+        setIsSearchingPhone(false);
+      }
+    }, 200);
+  };
+
+  const handleSelectMatchingPatient = (patient: PatientMatch) => {
+    setSelectedPatient(patient);
+    setForm(f => ({
+      ...f,
+      mobile: patient.mobile,
+      name: patient.name,
+      age: patient.age ? String(patient.age) : f.age,
+      email: patient.email ?? f.email
+    }));
+    setErrors(e => ({ ...e, mobile: undefined, name: undefined, age: undefined }));
+    setShowPhoneDropdown(false);
+    notify(`Auto-filled details for returning patient: ${patient.name}`, "success");
+  };
+
+  const handleClearPatientSelection = () => {
+    setSelectedPatient(null);
+    setForm(f => ({ ...f, name: "", age: "", email: "" }));
+  };
+
+  const validate = (): boolean => {
+    const e: FormErrors = {};
+    if (!form.name.trim()) e.name = "Patient name is required.";
+    if (!form.age || !Number.isFinite(Number(form.age)) || Number(form.age) < 0 || Number(form.age) > 130) e.age = "Enter a valid age (0–130).";
+    if (!form.mobile.trim()) e.mobile = "Mobile number is required.";
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Enter a valid email address.";
+    if (!form.complaint.trim()) e.complaint = "Describe the patient complaint.";
+    if (!form.complaintCategory) e.complaintCategory = "Select a complaint category.";
+    if (!effectiveDept) e.department = "Select a department.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const handleSave = () => {
-    if (!form.name.trim())         return notify("Patient name is required.", "error");
-    if (!form.age || Number(form.age) < 0 || Number(form.age) > 130) return notify("Enter a valid age.", "error");
-    if (!form.mobile.trim())       return notify("Mobile number is required.", "error");
-    if (!form.remark.trim())       return notify("Please describe the patient's problem.", "error");
-    if (!effectiveDept)            return notify("Please select a department for this patient.", "error");
-    setSaveBusy(true);
-    setTimeout(() => { setSaved(true); setSaveBusy(false); }, 400);
-  };
-
-  const handleReset = () => {
-    setForm({ name: "", age: "", mobile: "", temp: "", unit: "F", weight: "", remark: "" });
-    if (!receptionDept) setSelectedDept("");
-    setSaved(false);
-    setToken("");
-  };
-
-  const choose = async (doctorId: string) => {
-    // Prevent duplicate clicks — if token already assigned, do nothing
-    if (token) return;
-    const doctor = filteredDoctors.find(d => d.id === doctorId);
-    if (!doctor) return;
-    setChoosingBusy(doctorId);
-    try {
-      const body = {
-        patient: {
-          name: form.name.trim(),
-          age: Number(form.age),
-          mobile: form.mobile.trim(),
-          bodyTemperature: form.temp ? Number(form.temp) : undefined,
-          temperatureUnit: form.unit,
-          weightKg: form.weight ? Number(form.weight) : undefined,
-        },
-        doctorId,
-        departmentId: doctor.departmentId ?? effectiveDept.toLowerCase().replaceAll(" ", "-"),
-        complaint: form.remark.trim(),
-        complaintCategory: "general" as const,
-      };
-      const result = await callApi("/api/visits", body) as { token: string };
-      setToken(result.token);
-      notify(`Token ${result.token} assigned to ${doctor.room} (${doctor.name}).`, "success");
-      // Auto-switch to queue view after a short delay
-      setTimeout(() => setView("queue"), 1200);
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Could not create visit.", "error");
-    } finally {
-      setChoosingBusy("");
+    if (validate()) {
+      setSaveBusy(true);
+      setTimeout(() => { setSaved(true); setSaveBusy(false); }, 300);
     }
   };
 
-  const tempDisplay = () => {
-    if (!form.temp) return "";
-    const t = Number(form.temp);
-    if (form.unit === "F") return `${t}°F = ${((t - 32) * 5 / 9).toFixed(1)}°C`;
-    return `${t}°C = ${(t * 9 / 5 + 32).toFixed(1)}°F`;
+  const handleSelectDoctor = async (doctorId: string) => {
+    if (result) return;
+    if (!validate()) { notify("Please fix the form errors before selecting a doctor.", "error"); return; }
+    const doctor = filteredDoctors.find(d => d.id === doctorId);
+    if (!doctor) return;
+    setChoosingBusy(doctorId); setSelectedDoctorId(doctorId);
+    try {
+      const body = { patient: { name: form.name.trim(), age: Number(form.age), mobile: form.mobile.trim(), email: form.email.trim() || undefined }, doctorId, departmentId: doctor.departmentId ?? effectiveDept.toLowerCase().replaceAll(" ", "-"), complaint: form.complaint.trim(), complaintCategory: form.complaintCategory, isPriority: form.isPriority };
+      const res = await callApi("/api/visits", body) as { token: string; trackingUrl: string };
+      const visit = state.visits.find(v => v.token === res.token);
+      setResult({ token: res.token, trackingUrl: res.trackingUrl, etaLower: visit?.etaLower ?? null, etaUpper: visit?.etaUpper ?? null, recommendedArrival: visit?.recommendedArrival ?? null, doctorName: doctor.name, doctorRoom: doctor.room, emailSent: !!form.email.trim() });
+      notify(`Token ${res.token} — registered with ${doctor.name}.`, "success");
+    } catch (err) { notify(err instanceof Error ? err.message : "Could not create visit.", "error"); setSelectedDoctorId(""); }
+    finally { setChoosingBusy(""); }
   };
 
-  // ───── Queue List View ─────
+  const handleReset = () => {
+    setForm(EMPTY_FORM);
+    setErrors({});
+    setSelectedDoctorId("");
+    setResult(null);
+    setSaved(false);
+    setSelectedPatient(null);
+    setMatchingPatients([]);
+    setShowPhoneDropdown(false);
+  };
+
+  // ── Queue List View ──
+  const [priorityModal, setPriorityModal] = useState<{ isOpen: boolean; visitId: string; patientName: string; token: string; doctorId: string; doctorName: string; currentEta: string | null }>({ isOpen: false, visitId: "", patientName: "", token: "", doctorId: "", doctorName: "", currentEta: null });
+  const [priorityBusy, setPriorityBusy] = useState(false);
+
+  const handleMarkPriority = async () => {
+    setPriorityBusy(true);
+    try {
+      await callApi("/api/priority", { visitId: priorityModal.visitId, doctorId: priorityModal.doctorId });
+      notify("Priority marked successfully.", "success");
+      setPriorityModal(m => ({ ...m, isOpen: false }));
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to mark priority.", "error");
+    } finally {
+      setPriorityBusy(false);
+    }
+  };
+
   if (view === "queue") {
     return (
       <>
@@ -408,52 +569,55 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
           <div className="page-header-left">
             <div className="page-eyebrow">Reception{receptionDept ? ` · ${receptionDept}` : ""}</div>
             <h1 className="page-title">Patient Queue</h1>
-            <p className="page-subtitle">{queueVisits.length} patient{queueVisits.length !== 1 ? "s" : ""} currently in queue</p>
+            <p className="page-subtitle">{queueVisits.length} patient{queueVisits.length !== 1 ? "s" : ""} currently active</p>
           </div>
           <button className="btn btn-primary" onClick={() => { handleReset(); setView("register"); }}>+ Add New Patient</button>
         </div>
-
         {queueVisits.length === 0 ? (
           <div className="no-patient-card">
             <div className="no-patient-icon">📋</div>
             <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No Patients in Queue</div>
-            <p style={{ color: "var(--muted)", marginBottom: 16 }}>
-              Click &ldquo;+ Add New Patient&rdquo; above to register a new patient.
-            </p>
+            <p style={{ color: "var(--muted)", marginBottom: 16 }}>Click &ldquo;+ Add New Patient&rdquo; to register a new patient.</p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {queueVisits.map(v => {
               const doc = state.doctors.find(d => d.id === v.doctorId);
               return (
-                <div key={v.id} className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16 }}>
-                  <div className="patient-avatar-lg" style={{ width: 42, height: 42, fontSize: 16, flexShrink: 0 }}>
-                    {String(v.patientName ?? "P").slice(0, 1)}
-                  </div>
+                <div key={v.id} className="card" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                  <div className="patient-avatar-lg" style={{ width: 40, height: 40, fontSize: 15, flexShrink: 0 }}>{String(v.patientName ?? "P").slice(0, 1)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{v.patientName}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{v.patientName}</span>
                       <span className="badge badge-blue" style={{ fontSize: 11 }}>{v.token}</span>
-                      <span className={`badge ${v.status === "waiting" ? "badge-amber" : "badge-green"}`} style={{ fontSize: 11 }}>
-                        {v.status === "waiting" ? "⏳ Waiting" : "🩺 In Consultation"}
-                      </span>
+                      <span className={`badge ${v.status === "waiting" ? "badge-amber" : "badge-green"}`} style={{ fontSize: 11 }}>{v.status === "waiting" ? "Waiting" : "In Consultation"}</span>
+                      {v.priorityLevel === 1 && <PriorityBadge />}
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                      Age: {v.age} · {v.mobile ?? "—"} · {doc?.room ?? "—"} ({doc?.name ?? "Unassigned"})
-                    </div>
-                    {v.complaint && (
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        💬 {v.complaint}
-                      </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>Age {v.age} · {v.mobile ?? "—"} · {doc?.room ?? "—"} · {doc?.name ?? "Unassigned"}</div>
+                    {v.complaint && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.complaint}</div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+                    {v.status === "waiting" && v.priorityLevel !== 1 && doc && (
+                      <PriorityActionButton onClick={() => setPriorityModal({ isOpen: true, visitId: v.id, patientName: String(v.patientName), token: String(v.token), doctorId: doc.id, doctorName: doc.name, currentEta: fmtTime(v.etaLower as number) })} />
                     )}
+                    {v.etaLower && (<div style={{ textAlign: "right" }}><div style={{ fontSize: 11, color: "var(--muted)" }}>ETA</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--blue)" }}>{fmtTime(v.etaLower as number)}</div></div>)}
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-
-        {/* Department Referrals */}
+        
+        <PriorityConfirmationModal 
+          isOpen={priorityModal.isOpen} 
+          onClose={() => setPriorityModal(m => ({ ...m, isOpen: false }))} 
+          onConfirm={handleMarkPriority}
+          patientName={priorityModal.patientName}
+          token={priorityModal.token}
+          doctorName={priorityModal.doctorName}
+          currentEta={priorityModal.currentEta}
+          busy={priorityBusy}
+        />
         {referrals.filter(r => String(r.status) === "pending_allocation").length > 0 && (
           <div style={{ marginTop: 24 }}>
             <div className="section-title">↩ Incoming Referrals</div>
@@ -466,15 +630,9 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {state.doctors.filter(d => d.department === String(ref.department) && d.status !== "paused").map(doc => (
-                    <button key={doc.id} className="btn btn-secondary btn-sm" onClick={() => {
-                      void run(callApi, notify, "allocate-referral", { referralId: ref.id, doctorId: doc.id }, `Referral allocated to ${doc.room}.`);
-                    }}>
-                      {doc.room} · {doc.name}
-                    </button>
+                    <button key={doc.id} className="btn btn-secondary btn-sm" onClick={() => void run(callApi, notify, "allocate-referral", { referralId: ref.id, doctorId: doc.id }, `Referral allocated to ${doc.room}.`)}>{doc.room} · {doc.name}</button>
                   ))}
-                  {state.doctors.filter(d => d.department === String(ref.department)).length === 0 && (
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>No doctor for {String(ref.department)}</span>
-                  )}
+                  {state.doctors.filter(d => d.department === String(ref.department)).length === 0 && (<span style={{ fontSize: 11, color: "var(--muted)" }}>No doctor for {String(ref.department)}</span>)}
                 </div>
               </div>
             ))}
@@ -484,121 +642,226 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
     );
   }
 
-  // ───── Register Patient View ─────
+  // ── Register Patient View ──
   return (
     <>
       <div className="page-header">
         <div className="page-header-left">
           <div className="page-eyebrow">Reception{receptionDept ? ` · ${receptionDept}` : ""}</div>
           <h1 className="page-title">Register Patient</h1>
-          <p className="page-subtitle">Select department, fill details, save — then assign to a room.</p>
+          <p className="page-subtitle">Enter patient details, select a doctor, and generate token.</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {token && (
-            <button className="btn btn-secondary" onClick={() => { handleReset(); }}>+ New Patient</button>
-          )}
-          <button className="btn btn-secondary" onClick={() => setView("queue")} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            📋 Queue <span className="badge badge-blue" style={{ fontSize: 11 }}>{queueVisits.length}</span>
-          </button>
+          {result && <button className="btn btn-secondary" onClick={handleReset}>+ New Patient</button>}
+          <button className="btn btn-secondary" onClick={() => setView("queue")} style={{ display: "flex", alignItems: "center", gap: 6 }}>Queue <span className="badge badge-blue" style={{ fontSize: 11 }}>{queueVisits.length}</span></button>
         </div>
       </div>
 
       <div className="reception-layout">
-        {/* Left: Form */}
+        {/* ── Left: Form ── */}
         <div className="card reception-form-card">
-          <div className="reception-form-title">📋 Patient Details</div>
-
-          {token ? (
-            <>
-              <div className="token-confirm">
-                <div className="token-confirm-icon">🎫</div>
-                <div className="token-confirm-text">
-                  <div className="token-confirm-label">Token Issued</div>
-                  <div className="token-confirm-value">{token}</div>
-                </div>
+          {result ? (
+            <div style={{ padding: 4 }}>
+              <div style={{ textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--line)", marginBottom: 18 }}>
+                <div style={{ width: 48, height: 48, background: "var(--green-bg)", border: "2px solid var(--green)", borderRadius: "50%", display: "grid", placeItems: "center", margin: "0 auto 10px", fontSize: 20 }}>✓</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Registration Complete</div>
+                <div style={{ fontSize: 38, fontWeight: 800, color: "var(--ink)", letterSpacing: "0.04em" }}>{result.token}</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>{result.doctorName} · {result.doctorRoom}</div>
               </div>
-              <div style={{ marginTop: 16, fontSize: 13, color: "var(--muted)" }}>
-                Patient assigned to <strong>{effectiveDept}</strong>. Click &ldquo;+ New Patient&rdquo; to register another or &ldquo;📋 Queue&rdquo; to view all patients.
-              </div>
-            </>
-          ) : (
-            <div className="reception-form">
-              {/* Department selector — only show if receptionist has no fixed dept */}
-              {!receptionDept && (
-                <div className="form-field">
-                  <label className="form-label">Department / Speciality *</label>
-                  <select
-                    className="form-select"
-                    value={selectedDept}
-                    onChange={e => { setSelectedDept(e.target.value); setSaved(false); setToken(""); }}
-                    disabled={saved}
-                  >
-                    <option value="">— Select department —</option>
-                    {DEPT_LIST.map(d => (
-                      <option key={d.key} value={d.key}>{d.icon} {d.label}</option>
-                    ))}
-                  </select>
-                  {selectedDept && (
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                      {DEPT_LIST.find(d => d.key === selectedDept)?.desc}
+              {(result.etaLower || result.etaUpper) && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                  <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Expected Consultation</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{fmtTime(result.etaLower) ?? "—"}{result.etaUpper ? ` – ${fmtTime(result.etaUpper)}` : ""}</div>
+                  </div>
+                  {result.recommendedArrival && (
+                    <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
+                      <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Recommended Arrival</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>{fmtTime(result.recommendedArrival)}</div>
                     </div>
                   )}
                 </div>
               )}
-
-              <div className="form-field">
-                <label className="form-label">Patient Name *</label>
-                <input className="form-input" value={form.name} onChange={e => ch("name", e.target.value)} placeholder="Full name" disabled={saved} />
+              <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "10px 12px", marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Patient Tracking</div>
+                <a href={result.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)", wordBreak: "break-all", display: "block", marginBottom: 6 }}>{result.trackingUrl}</a>
+                {result.emailSent ? (<div style={{ fontSize: 12, color: "var(--green)" }}>✓ Confirmation email sent</div>) : (<div style={{ fontSize: 12, color: "var(--muted)" }}>Share this link with the patient to track live</div>)}
+              </div>
+              <button className="btn btn-primary btn-full" onClick={handleReset}>+ Register Next Patient</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Patient Intake &amp; Registration</span>
+                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)" }}>Unified Front-Desk Flow</span>
               </div>
 
-              <div className="form-row">
+              {/* UNIFIED PHONE NUMBER FIELD WITH INSTANT AUTOFILL */}
+              <div className="form-field phone-autofill-container" ref={phoneWrapperRef} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>
+                    Patient Mobile Number *
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    Ask patient for 10-digit number
+                  </span>
+                </div>
+
+                <div style={{ position: "relative" }}>
+                  <input
+                    className={`form-input${errors.mobile ? " input-error" : ""}`}
+                    style={{ paddingRight: isSearchingPhone ? 38 : 12, fontSize: 14, fontWeight: 600, letterSpacing: "0.02em" }}
+                    value={form.mobile}
+                    onChange={e => handleMobileChange(e.target.value)}
+                    onFocus={() => { if (matchingPatients.length > 0) setShowPhoneDropdown(true); }}
+                    placeholder="e.g. 9820123456"
+                    type="tel"
+                    autoComplete="off"
+                  />
+                  {isSearchingPhone && (
+                    <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
+                      <span className="btn-spinner" style={{ width: 14, height: 14, borderColor: "var(--muted) transparent transparent transparent" }} />
+                    </div>
+                  )}
+                </div>
+                {errors.mobile && <div className="field-error">{errors.mobile}</div>}
+
+                {/* RETURNING PATIENT STATUS PILL */}
+                {selectedPatient && (
+                  <div className="returning-patient-pill" style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--green-bg)", border: "1px solid rgba(22, 121, 79, 0.25)", borderRadius: "var(--radius-sm)", padding: "8px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--green)", fontWeight: 600, flexWrap: "wrap" }}>
+                      <span>✓</span>
+                      <span>Returning Patient: <strong>{selectedPatient.name}</strong> ({selectedPatient.age ? `${selectedPatient.age} yrs` : "Profile loaded"})</span>
+                      {selectedPatient.hospitalPatientNumber && (
+                        <span style={{ background: "rgba(22,121,79,0.12)", padding: "1px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                          {selectedPatient.hospitalPatientNumber}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearPatientSelection}
+                      style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 11, cursor: "pointer", textDecoration: "underline", padding: "0 4px", whiteSpace: "nowrap" }}
+                    >
+                      Clear / New
+                    </button>
+                  </div>
+                )}
+
+                {/* NEW PATIENT NOTIFICATION (when typed >= 4 digits, no selection, and no matches) */}
+                {!selectedPatient && form.mobile.replace(/\D/g, "").length >= 4 && matchingPatients.length === 0 && !isSearchingPhone && (
+                  <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", background: "var(--surface)", border: "1px dashed var(--line)", borderRadius: "var(--radius-sm)", padding: "6px 10px" }}>
+                    <span>✨</span>
+                    <span>New patient number — complete registration below to create profile.</span>
+                  </div>
+                )}
+
+                {/* AUTOFILL SUGGESTIONS DROPDOWN */}
+                {showPhoneDropdown && matchingPatients.length > 0 && (
+                  <div className="phone-autocomplete-dropdown">
+                    <div style={{ padding: "8px 12px", background: "var(--surface)", borderBottom: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Matching Registered Patients</span>
+                      <span style={{ fontWeight: 500, fontSize: 10, textTransform: "none" }}>Click to autofill</span>
+                    </div>
+                    <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                      {matchingPatients.map((p, idx) => (
+                        <div
+                          key={p.id ?? `${p.mobile}-${idx}`}
+                          className="phone-suggestion-item"
+                          onClick={() => handleSelectMatchingPatient(p)}
+                        >
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{p.name}</span>
+                              {p.hospitalPatientNumber && (
+                                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", background: "var(--line)", padding: "1px 5px", borderRadius: 4 }}>
+                                  {p.hospitalPatientNumber}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <span>📱 {p.mobile}</span>
+                              {p.age && <span>Age: {p.age} yrs</span>}
+                              {p.lastVisitComplaint && <span>Prior: {p.lastVisitComplaint}</span>}
+                            </div>
+                          </div>
+                          <span className="phone-autofill-action-btn">
+                            Autofill ↵
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Name */}
+              <div className="form-field" style={{ marginBottom: 10 }}>
+                <label className="form-label">Patient Name *</label>
+                <input className={`form-input${errors.name ? " input-error" : ""}`} value={form.name} onChange={e => ch("name", e.target.value)} placeholder="Full name" />
+                {errors.name && <div className="field-error">{errors.name}</div>}
+              </div>
+
+              {/* Age + Email */}
+              <div className="form-row" style={{ marginBottom: 10 }}>
                 <div className="form-field">
                   <label className="form-label">Age *</label>
-                  <input className="form-input" type="number" min="0" max="130" value={form.age} onChange={e => ch("age", e.target.value)} placeholder="Years" disabled={saved} />
+                  <input className={`form-input${errors.age ? " input-error" : ""}`} type="number" min="0" max="130" value={form.age} onChange={e => ch("age", e.target.value)} placeholder="Years" />
+                  {errors.age && <div className="field-error">{errors.age}</div>}
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Phone Number *</label>
-                  <input className="form-input" value={form.mobile} onChange={e => ch("mobile", e.target.value)} placeholder="+91 XXXXX XXXXX" disabled={saved} />
+                  <label className="form-label">Email <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 11 }}>(optional — for notifications)</span></label>
+                  <input className={`form-input${errors.email ? " input-error" : ""}`} type="email" value={form.email} onChange={e => ch("email", e.target.value)} placeholder="patient@email.com" />
+                  {errors.email && <div className="field-error">{errors.email}</div>}
                 </div>
               </div>
 
-              <div className="form-field">
-                <label className="form-label">Body Temperature</label>
-                <div className="temp-group">
-                  <input
-                    className="temp-input"
-                    type="number"
-                    value={form.temp}
-                    onChange={e => ch("temp", e.target.value)}
-                    placeholder={form.unit === "F" ? "e.g. 98.6" : "e.g. 37.0"}
-                    disabled={saved}
-                  />
-                  <div className="temp-toggle">
-                    <button className={`temp-toggle-btn ${form.unit === "F" ? "active" : ""}`} onClick={() => ch("unit", "F")} disabled={saved}>°F</button>
-                    <button className={`temp-toggle-btn ${form.unit === "C" ? "active" : ""}`} onClick={() => ch("unit", "C")} disabled={saved}>°C</button>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--line)" }}>Visit Details</div>
+
+              {/* Complaint */}
+              <div className="form-field" style={{ marginBottom: 10 }}>
+                <label className="form-label">Patient Problem / Reason for Visit *</label>
+                <textarea className={`form-input form-textarea${errors.complaint ? " input-error" : ""}`} value={form.complaint} onChange={e => ch("complaint", e.target.value)} placeholder="Describe the chief complaint…" style={{ minHeight: 68 }} />
+                {errors.complaint && <div className="field-error">{errors.complaint}</div>}
+              </div>
+
+              {/* Category + Department */}
+              <div className="form-row" style={{ marginBottom: 4 }}>
+                <div className="form-field">
+                  <label className="form-label">Complaint Category *</label>
+                  <select className={`form-select${errors.complaintCategory ? " input-error" : ""}`} value={form.complaintCategory} onChange={e => ch("complaintCategory", e.target.value)}>
+                    {COMPLAINT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                  {errors.complaintCategory && <div className="field-error">{errors.complaintCategory}</div>}
+                </div>
+                {!receptionDept && (
+                  <div className="form-field">
+                    <label className="form-label">Department *</label>
+                    <select className={`form-select${errors.department ? " input-error" : ""}`} value={form.department} onChange={e => ch("department", e.target.value)}>
+                      <option value="">— Select department —</option>
+                      {DEPT_LIST.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                    </select>
+                    {errors.department && <div className="field-error">{errors.department}</div>}
                   </div>
-                </div>
-                {form.temp && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{tempDisplay()}</div>}
+                )}
               </div>
+              {effectiveDept && !receptionDept && (<div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>{DEPT_LIST.find(d => d.key === effectiveDept)?.desc}</div>)}
 
-              <div className="form-field">
-                <label className="form-label">Weight (kg)</label>
-                <input className="form-input" type="number" value={form.weight} onChange={e => ch("weight", e.target.value)} placeholder="e.g. 68" disabled={saved} />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">Patient Problem / Remark *</label>
-                <textarea className="form-input form-textarea" value={form.remark} onChange={e => ch("remark", e.target.value)} placeholder="Describe the chief complaint in detail…" disabled={saved} />
+              <div className="form-field" style={{ marginBottom: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--red, #c62828)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.isPriority} onChange={e => setForm(f => ({ ...f, isPriority: e.target.checked }))} style={{ width: 16, height: 16, accentColor: "var(--red, #c62828)" }} />
+                  Mark as Emergency / Priority Case
+                </label>
               </div>
 
               {!saved && (
-                <button className="btn btn-primary btn-full btn-lg" onClick={handleSave} disabled={saveBusy}>
+                <button className="btn btn-primary btn-full btn-lg" style={{ marginTop: 16 }} onClick={handleSave} disabled={saveBusy}>
                   {saveBusy ? <><span className="btn-spinner" /> Saving…</> : "Save & Choose Room →"}
                 </button>
               )}
 
-              {saved && !token && (
-                <div style={{ background: "var(--green-bg)", border: "1px solid rgba(22,121,79,0.2)", borderRadius: "var(--radius-sm)", padding: "12px 14px", fontSize: 13, color: "var(--green)", fontWeight: 600 }}>
+              {saved && !result && (
+                <div style={{ background: "var(--green-bg)", border: "1px solid rgba(22,121,79,0.2)", borderRadius: "var(--radius-sm)", padding: "12px 14px", fontSize: 13, color: "var(--green)", fontWeight: 600, marginTop: 16 }}>
                   ✅ Details saved — select a room on the right.
                 </div>
               )}
@@ -606,115 +869,76 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
           )}
         </div>
 
-        {/* Right: Room Picker */}
+        {/* ── Right: Available Doctors ── */}
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>
-              {saved && !token ? "🏥 Choose a Room" : "🏥 Available Rooms"}
-            </div>
-            {effectiveDept && (
-              <span className="badge badge-blue">{DEPT_LIST.find(d => d.key === effectiveDept)?.icon} {effectiveDept}</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div className="section-title" style={{ marginBottom: 0 }}>Available Doctors / Rooms</div>
+            {effectiveDept && <span className="badge badge-blue">{effectiveDept}</span>}
           </div>
 
-          {!saved && !token ? (
+          {result ? (
+            <div style={{ background: "var(--green-bg)", border: "1px solid rgba(22,121,79,0.3)", borderRadius: "var(--radius)", padding: "18px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: 20, marginBottom: 8 }}>✓</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--green)" }}>Assigned to {result.doctorName}</div>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>{result.doctorRoom} · Token {result.token}</div>
+            </div>
+          ) : !saved ? (
             <div className="rooms-placeholder">
               <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>🏥</div>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                {!effectiveDept ? "Select a department first" : "Fill in details & save"}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                {!effectiveDept
-                  ? "Choose the department this patient needs from the form"
-                  : `Complete the patient form and click "Save & Choose Room"`}
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>{effectiveDept ? "Fill in details & save" : "Select a department"}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Complete the form and click "Save & Choose Room"</div>
+            </div>
+          ) : filteredDoctors.length === 0 ? (
+            <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>No Doctor Available</div>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>No doctor configured for <strong>{effectiveDept}</strong>.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                {[...new Set(state.doctors.map(d => d.department))].map(dept => (<span key={dept} className="badge badge-green">{dept}</span>))}
               </div>
             </div>
           ) : (
-            <div className="rooms-section">
-              {filteredDoctors.length === 0 ? (
-                /* No doctors configured for this department */
-                <div style={{ background: "white", border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: 28, textAlign: "center" }}>
-                  <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.35 }}>🩺</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: "var(--ink)" }}>No Doctor Available</div>
-                  <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>
-                    No doctor is currently configured for <strong>{effectiveDept}</strong>.
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                    Available departments with doctors:
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 10 }}>
-                    {[...new Set(state.doctors.map(d => d.department))].map(dept => (
-                      <span key={dept} className="badge badge-green">{dept}</span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                filteredDoctors.map(doc => {
-                  const waiting = waitingFor(state, doc.id).length;
-                  const current = state.visits.find(v => v.id === doc.currentVisitId);
-                  const isBreak = doc.status === "paused";
-                  // Disable if: on break, already busy choosing, or token already assigned (prevents duplicate)
-                  const isDisabled = isBreak || !!choosingBusy || !!token;
-                  return (
-                    <button
-                      key={doc.id}
-                      className={`room-card ${isBreak ? "room-card-break" : ""} ${token ? "room-card-done" : ""}`}
-                      onClick={() => !isDisabled && void choose(doc.id)}
-                      disabled={isDisabled}
-                      style={{ width: "100%", textAlign: "left", marginBottom: 10, opacity: token ? 0.6 : 1 }}
-                    >
-                      <div className="room-card-avatar">{doc.name.slice(0, 1).toUpperCase()}</div>
-                      <div className="room-card-info">
-                        <div className="room-card-name">
-                          {doc.room} · {doc.name}
-                          {isBreak && <span className="badge badge-amber">On Break</span>}
-                          {doc.status === "busy" && <span className="badge badge-blue">Busy</span>}
-                          {doc.status === "available" && <span className="badge badge-green">Available</span>}
-                        </div>
-                        <div className="room-card-dept">{doc.department}</div>
-                        <div className="room-card-stats">
-                          <div className="room-stat">
-                            <div className="room-stat-value">{waiting}</div>
-                            <div className="room-stat-label">Waiting</div>
-                          </div>
-                          <div className="room-stat-divider" />
-                          <div className="room-stat">
-                            <div className="room-stat-value">{current?.token ?? "—"}</div>
-                            <div className="room-stat-label">Current</div>
-                          </div>
-                          <div className="room-stat-divider" />
-                          <div className="room-stat">
-                            <div className="room-stat-value">{waiting + (current ? 1 : 0)}</div>
-                            <div className="room-stat-label">Assigned</div>
-                          </div>
-                        </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filteredDoctors.map(doc => {
+                const waitingList = waitingFor(state, doc.id);
+                const waiting = waitingList.length;
+                const current = state.visits.find(v => v.id === doc.currentVisitId);
+                const isBreak = doc.status === "paused";
+                const isDisabled = isBreak || !!choosingBusy || !!result;
+                const lastInQueue = waitingList[waitingList.length - 1];
+                return (
+                  <button
+                    key={doc.id}
+                    className={`room-card ${isBreak ? "room-card-break" : ""} ${selectedDoctorId === doc.id && !result ? "room-card-selected" : ""}`}
+                    onClick={() => !isDisabled && void handleSelectDoctor(doc.id)}
+                    disabled={isDisabled}
+                    style={{ width: "100%", textAlign: "left" }}
+                  >
+                    <div className="room-card-avatar">{doc.name.replace("Dr.", "").trim().slice(0, 1).toUpperCase()}</div>
+                    <div className="room-card-info" style={{ flex: 1 }}>
+                      <div className="room-card-name">
+                        {doc.name}
+                        {isBreak && <span className="badge badge-amber" style={{ marginLeft: 6 }}>On Break</span>}
+                        {!isBreak && doc.status === "busy" && <span className="badge badge-blue" style={{ marginLeft: 6 }}>Busy</span>}
+                        {!isBreak && doc.status === "available" && <span className="badge badge-green" style={{ marginLeft: 6 }}>Available</span>}
                       </div>
-                      {!isBreak && !token && (
-                        <div className="room-card-arrow">
-                          {choosingBusy === doc.id ? <span className="btn-spinner dark" /> : "→"}
-                        </div>
-                      )}
-                      {token && (
-                        <div className="room-card-arrow" style={{ color: "var(--green)" }}>✓</div>
-                      )}
-                    </button>
-                  );
-                })
-              )}
-
-              {/* Show all other departments as "No doctor" info */}
-              {filteredDoctors.length > 0 && effectiveDept && (
-                <div style={{ marginTop: 16, padding: "12px 14px", background: "var(--surface)", border: "1px dashed var(--line)", borderRadius: "var(--radius-sm)", fontSize: 12, color: "var(--muted)" }}>
-                  Showing doctors for <strong>{effectiveDept}</strong> only.
-                  Other departments may not have doctors assigned yet.
-                </div>
-              )}
+                      <div className="room-card-dept">{doc.department} · {doc.room}</div>
+                      <div className="room-card-stats">
+                        <div className="room-stat"><div className="room-stat-value">{waiting}</div><div className="room-stat-label">Waiting</div></div>
+                        <div className="room-stat-divider" />
+                        <div className="room-stat"><div className="room-stat-value">{current?.token ?? "—"}</div><div className="room-stat-label">Current</div></div>
+                        {lastInQueue?.etaLower && (<><div className="room-stat-divider" /><div className="room-stat"><div className="room-stat-value" style={{ fontSize: 11 }}>{fmtTime(lastInQueue.etaLower)}</div><div className="room-stat-label">Next slot</div></div></>)}
+                      </div>
+                    </div>
+                    {!isBreak && (<div className="room-card-arrow">{choosingBusy === doc.id ? <span className="btn-spinner dark" /> : "→"}</div>)}
+                  </button>
+                );
+              })}
+              <div style={{ padding: "9px 12px", background: "var(--surface)", border: "1px dashed var(--line)", borderRadius: "var(--radius-sm)", fontSize: 12, color: "var(--muted)" }}>Select a doctor above to confirm registration and generate token.</div>
             </div>
           )}
 
-          {/* Department Referrals */}
           {referrals.filter(r => String(r.status) === "pending_allocation").length > 0 && (
-            <div style={{ marginTop: 24 }}>
+            <div style={{ marginTop: 20 }}>
               <div className="section-title">↩ Incoming Referrals</div>
               {referrals.filter(r => String(r.status) === "pending_allocation").map(ref => (
                 <div key={ref.id} className="referral-card" style={{ marginBottom: 10 }}>
@@ -725,15 +949,9 @@ export function ReceptionLive({ state, department: receptionDept, callApi, notif
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {state.doctors.filter(d => d.department === String(ref.department) && d.status !== "paused").map(doc => (
-                      <button key={doc.id} className="btn btn-secondary btn-sm" onClick={() => {
-                        void run(callApi, notify, "allocate-referral", { referralId: ref.id, doctorId: doc.id }, `Referral allocated to ${doc.room}.`);
-                      }}>
-                        {doc.room} · {doc.name}
-                      </button>
+                      <button key={doc.id} className="btn btn-secondary btn-sm" onClick={() => void run(callApi, notify, "allocate-referral", { referralId: ref.id, doctorId: doc.id }, `Referral allocated to ${doc.room}.`)}>{doc.room} · {doc.name}</button>
                     ))}
-                    {state.doctors.filter(d => d.department === String(ref.department)).length === 0 && (
-                      <span style={{ fontSize: 11, color: "var(--muted)" }}>No doctor for {String(ref.department)}</span>
-                    )}
+                    {state.doctors.filter(d => d.department === String(ref.department)).length === 0 && (<span style={{ fontSize: 11, color: "var(--muted)" }}>No doctor for {String(ref.department)}</span>)}
                   </div>
                 </div>
               ))}
@@ -912,16 +1130,14 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
           <div className="patient-overview-header">
             <div className="patient-avatar-lg">{String(patient.patientName ?? "P").slice(0, 1)}</div>
             <div className="patient-overview-info">
-              <div className="patient-name-lg">{patient.patientName} <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 400 }}>· Token {patient.token}</span></div>
+              <div className="patient-name-lg" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {patient.patientName} 
+                <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 400 }}>· Token {patient.token}</span>
+                {patient.priorityLevel === 1 && <PriorityBadge />}
+              </div>
               <div className="patient-meta-row">
                 <span className="patient-meta-item">🎂 {patient.age} years</span>
                 <span className="patient-meta-item">📱 {patient.mobile ?? "—"}</span>
-                {patient.bodyTemperature && (
-                  <span className="patient-meta-item">🌡️ {patient.bodyTemperature}°{patient.temperatureUnit ?? "F"}</span>
-                )}
-                {patient.weightKg && (
-                  <span className="patient-meta-item">⚖️ {patient.weightKg} kg</span>
-                )}
               </div>
             </div>
           </div>
@@ -931,14 +1147,6 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
             <div className="vital-card">
               <div className="vital-value">{patient.age}</div>
               <div className="vital-unit">Age (years)</div>
-            </div>
-            <div className="vital-card">
-              <div className="vital-value">{patient.bodyTemperature ?? "—"}</div>
-              <div className="vital-unit">Temp °{patient.temperatureUnit ?? "F"}</div>
-            </div>
-            <div className="vital-card">
-              <div className="vital-value">{patient.weightKg ?? "—"}</div>
-              <div className="vital-unit">Weight (kg)</div>
             </div>
             <div className="vital-card">
               <div className="vital-value">{patient.token}</div>
@@ -960,16 +1168,15 @@ export function DoctorLive({ state, doctorId, callApi, notify }: {
         <div className="diagnosis-layout">
           {/* Patient info – compact sidebar */}
           <div className="patient-mini-card">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
               <div className="patient-avatar-lg" style={{ width: 38, height: 38, fontSize: 14 }}>{String(patient.patientName ?? "P").slice(0, 1)}</div>
               <div className="patient-mini-name">{patient.patientName}</div>
+              {patient.priorityLevel === 1 && <PriorityBadge />}
             </div>
             <div className="patient-mini-meta">
               Token: <strong>{patient.token}</strong><br />
               Age: <strong>{patient.age} yrs</strong><br />
-              Phone: <strong>{patient.mobile ?? "—"}</strong><br />
-              Temp: <strong>{patient.bodyTemperature ?? "—"}°{patient.temperatureUnit ?? "F"}</strong><br />
-              Weight: <strong>{patient.weightKg ?? "—"} kg</strong>
+              Phone: <strong>{patient.mobile ?? "—"}</strong>
             </div>
             <div className="patient-mini-complaint">
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 6 }}>Complaint</div>
@@ -1454,7 +1661,6 @@ function generatePrescriptionHTML({ patient, doctor, remark, items, referrals }:
     <div class="info-group"><div class="info-label">Token / ID</div><div class="info-value">${patient.token}</div></div>
     <div class="info-group"><div class="info-label">Age / Sex</div><div class="info-value">${patient.age} Y / U</div></div>
     <div class="info-group"><div class="info-label">Date</div><div class="info-value">${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div></div>
-    <div class="info-group"><div class="info-label">Vitals</div><div class="info-value">T: ${patient.bodyTemperature ?? "—"}°${patient.temperatureUnit ?? "F"} · W: ${patient.weightKg ?? "—"} kg</div></div>
     <div class="info-group"><div class="info-label">Contact</div><div class="info-value">${patient.mobile ?? "—"}</div></div>
   </div>
 

@@ -2,5 +2,9 @@ node_modules/
 .next/
 .env
 .env.local
+.env.production
 .secrets/
 coverage/
+.vercel
+scripts/test-resend.ts
+

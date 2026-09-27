@@ -1,1 +1,24 @@
-{ "firestore": { "rules": "firestore.rules" } }
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": [
+      {
+        "collectionGroup": "visits",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "doctorId", "order": "ASCENDING" },
+          { "fieldPath": "status", "order": "ASCENDING" },
+          { "fieldPath": "consultationEndedAt", "order": "DESCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "visits",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "status", "order": "ASCENDING" },
+          { "fieldPath": "consultationEndedAt", "order": "DESCENDING" }
+        ]
+      }
+    ]
+  }
+}
